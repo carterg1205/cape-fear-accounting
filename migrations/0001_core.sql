@@ -1,0 +1,23 @@
+PRAGMA foreign_keys = ON;
+CREATE TABLE users(id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, role TEXT NOT NULL CHECK(role IN ('owner','instructor','student')), salt TEXT, password_hash TEXT, active INTEGER NOT NULL DEFAULT 1);
+CREATE TABLE sessions(token_hash TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),expires INTEGER NOT NULL);
+CREATE TABLE login_limits(key TEXT PRIMARY KEY,count INTEGER NOT NULL,window INTEGER NOT NULL);
+CREATE TABLE sections(id TEXT PRIMARY KEY,name TEXT NOT NULL, instructor_id TEXT REFERENCES users(id),timezone TEXT NOT NULL DEFAULT 'America/New_York',weight INTEGER NOT NULL DEFAULT 5);
+CREATE TABLE enrollments(user_id TEXT REFERENCES users(id),section_id TEXT REFERENCES sections(id),PRIMARY KEY(user_id,section_id));
+CREATE TABLE accounts(id TEXT PRIMARY KEY,name TEXT NOT NULL,type TEXT NOT NULL CHECK(type IN ('asset','liability','equity','revenue','expense')),normal TEXT NOT NULL CHECK(normal IN ('debit','credit')));
+CREATE TABLE assignments(id TEXT PRIMARY KEY,section_id TEXT NOT NULL REFERENCES sections(id),unit INTEGER NOT NULL,title TEXT NOT NULL,instructions TEXT NOT NULL,document TEXT NOT NULL,transaction_date TEXT NOT NULL,explanation TEXT NOT NULL,points INTEGER NOT NULL DEFAULT 10, release_mode TEXT NOT NULL DEFAULT 'locked' CHECK(release_mode IN ('locked','open','scheduled')),opens_at TEXT,due_at TEXT,period_start TEXT NOT NULL,period_end TEXT NOT NULL);
+CREATE TABLE answer_keys(assignment_id TEXT PRIMARY KEY REFERENCES assignments(id),accepted TEXT NOT NULL);
+CREATE TABLE drafts(user_id TEXT REFERENCES users(id),assignment_id TEXT REFERENCES assignments(id),body TEXT NOT NULL,PRIMARY KEY(user_id,assignment_id));
+CREATE TABLE entries(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),assignment_id TEXT NOT NULL REFERENCES assignments(id),date TEXT NOT NULL,memo TEXT NOT NULL,reference TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),UNIQUE(user_id,assignment_id));
+CREATE TABLE lines(id INTEGER PRIMARY KEY,entry_id TEXT NOT NULL REFERENCES entries(id),account TEXT NOT NULL REFERENCES accounts(id),debit INTEGER NOT NULL CHECK(debit>=0),credit INTEGER NOT NULL CHECK(credit>=0),CHECK((debit>0 AND credit=0) OR (credit>0 AND debit=0)));
+CREATE TABLE attempts(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),assignment_id TEXT NOT NULL REFERENCES assignments(id),body TEXT NOT NULL,feedback TEXT NOT NULL,correct INTEGER NOT NULL,created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+CREATE TABLE audit(id TEXT PRIMARY KEY,actor TEXT NOT NULL REFERENCES users(id),action TEXT NOT NULL,target TEXT NOT NULL,details TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')));
+CREATE TRIGGER entries_no_update BEFORE UPDATE ON entries BEGIN SELECT RAISE(ABORT,'Posted entries are immutable'); END;
+CREATE TRIGGER entries_no_delete BEFORE DELETE ON entries BEGIN SELECT RAISE(ABORT,'Posted entries are immutable'); END;
+CREATE TRIGGER lines_no_update BEFORE UPDATE ON lines BEGIN SELECT RAISE(ABORT,'Posted lines are immutable'); END;
+CREATE TRIGGER lines_no_delete BEFORE DELETE ON lines BEGIN SELECT RAISE(ABORT,'Posted lines are immutable'); END;
+CREATE INDEX entries_student ON entries(user_id);
+CREATE INDEX attempts_student ON attempts(user_id,assignment_id);
+INSERT INTO sections(id,name) VALUES('acg201','ACG 201 · Cape Fear beta');
+INSERT INTO accounts VALUES
+('1010','Cash','asset','debit'),('1100','Accounts receivable','asset','debit'),('1200','Merchandise inventory','asset','debit'),('1300','Prepaid insurance','asset','debit'),('1500','Equipment','asset','debit'),('1510','Accumulated depreciation','asset','credit'),('2010','Accounts payable','liability','credit'),('2100','Unearned revenue','liability','credit'),('2200','Notes payable','liability','credit'),('3010','Common stock','equity','credit'),('3100','Retained earnings','equity','credit'),('3200','Dividends','equity','debit'),('4010','Sales revenue','revenue','credit'),('4100','Service revenue','revenue','credit'),('5010','Cost of goods sold','expense','debit'),('5100','Rent expense','expense','debit'),('5200','Insurance expense','expense','debit'),('5300','Depreciation expense','expense','debit');
