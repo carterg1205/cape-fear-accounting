@@ -25,3 +25,4 @@ jobs:
             sleep 1
           done
           npm run test:integration
+          npm run test:classroom

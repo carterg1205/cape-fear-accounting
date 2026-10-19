@@ -10,7 +10,8 @@
     "db:local": "wrangler d1 migrations apply DB --local",
     "test": "vitest run",
     "test:integration": "node scripts/integration.mjs",
-    "check": "npm test && npm run build"
+    "check": "npm test && npm run build",
+    "test:classroom": "node scripts/classroom-integration.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

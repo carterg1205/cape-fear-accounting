@@ -1,11 +1,12 @@
-import { validate, trialBalance, type Account, type Line } from './accounting';
+import { validate, trialBalance, referenceFeedback, type Account, type Line } from './accounting';
+import {classroom} from './classroom';
 interface Env {DB:D1Database;DOCUMENTS:R2Bucket;ASSETS:Fetcher;ENVIRONMENT:string;DEV_AUTH?:string}
 type User={id:string;name:string;email:string;role:'student'|'instructor'|'owner'};
 const json=(data:unknown,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 function fail(message:string,status=400):never {throw Object.assign(new Error(message),{status});}
 const digest=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))).map(b=>b.toString(16).padStart(2,'0')).join('');
 async function password(secret:string,salt:string){const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),'PBKDF2',false,['deriveBits']);return Array.from(new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',salt:new TextEncoder().encode(salt),iterations:100000,hash:'SHA-256'},key,256))).map(b=>b.toString(16).padStart(2,'0')).join('');}
-const open=(a:any)=>a.release_mode==='open'||(a.release_mode==='scheduled'&&a.opens_at&&Date.parse(a.opens_at)<=Date.now());
+const open=(a:any)=>a.published===1&&(a.release_mode==='open'||(a.release_mode==='scheduled'&&a.opens_at&&Date.parse(a.opens_at)<=Date.now()));
 async function body(req:Request){if(Number(req.headers.get('content-length')||0)>20000)fail('Request too large.',413);const t=await req.text();if(t.length>20000)fail('Request too large.',413);try{const value=JSON.parse(t);if(!value||typeof value!=='object'||Array.isArray(value))fail('Expected a JSON object.');return value;}catch{fail('Invalid JSON object.');}}
 export default {async fetch(req:Request,env:Env):Promise<Response>{
  const url=new URL(req.url),path=url.pathname;
@@ -46,6 +47,7 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
   const section=sections.find(s=>s.id===sectionId);
   const instructor=user.role==='owner'||(user.role==='instructor'&&section?.instructor_id===user.id);
   const accounts=(await sql('SELECT * FROM accounts ORDER BY id').all<Account>()).results;
+  const classroomResponse=await classroom({req,url,env,user,sectionId,section,sections,instructor,accounts,sql,body,fail,json});if(classroomResponse)return classroomResponse;
   if(path==='/api/students'&&req.method==='POST'){
    if(!instructor)fail('Instructor access required.',403);
    const data=await body(req);
@@ -67,10 +69,12 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
    return json({student:{id,name,email,role:'student'},section:{id:sectionId,name:section!.name},passphrase},201);
   }
   if(path==='/api/state'&&req.method==='GET'){
-   const assignments=(await sql('SELECT a.*,e.id AS entry_id,e.created_at AS submitted_at,(SELECT COUNT(*) FROM attempts t WHERE t.user_id=? AND t.assignment_id=a.id) AS attempts FROM assignments a LEFT JOIN entries e ON e.assignment_id=a.id AND e.user_id=? WHERE a.section_id=? ORDER BY a.transaction_date',user.id,user.id,sectionId).all()).results.map((a:any)=>{
-    const unlocked=open(a);const safe={...a,unlocked};delete safe.explanation;
+   const assignments=(await sql('SELECT a.*,COALESCE(x.due_at,a.due_at) AS effective_due_at,e.id AS entry_id,e.created_at AS submitted_at,(SELECT COUNT(*) FROM attempts t WHERE t.user_id=? AND t.assignment_id=a.id) AS attempts FROM assignments a LEFT JOIN entries e ON e.assignment_id=a.id AND e.user_id=? LEFT JOIN extensions x ON x.assignment_id=a.id AND x.user_id=? WHERE a.section_id=? AND (a.published=1 OR ?=1) ORDER BY a.unit,a.sort_order,a.transaction_date',user.id,user.id,user.id,sectionId,instructor?1:0).all()).results.map((a:any)=>{
+    const unlocked=open(a);const safe={...a,unlocked};delete safe.explanation;delete safe.expected_reference;delete safe.cash_flow;
     if(!instructor&&!unlocked){delete safe.document;delete safe.instructions;}if(a.entry_id)safe.explanation=a.explanation;return safe;
    });
+   const attached=(await sql('SELECT d.id,d.assignment_id,d.filename,d.content_type,d.size FROM documents d JOIN assignments a ON a.id=d.assignment_id WHERE a.section_id=?',sectionId).all()).results;
+   for(const a of assignments as any[])a.documents=(instructor||a.unlocked)?attached.filter(d=>d.assignment_id===a.id):[];
    const entries=(await sql('SELECT e.* FROM entries e JOIN assignments a ON a.id=e.assignment_id WHERE e.user_id=? AND a.section_id=? ORDER BY e.date,e.created_at',user.id,sectionId).all()).results;
    const lines=(await sql('SELECT l.*,e.date,e.memo,e.reference FROM lines l JOIN entries e ON e.id=l.entry_id JOIN assignments a ON a.id=e.assignment_id WHERE e.user_id=? AND a.section_id=? ORDER BY e.date,e.created_at,l.id',user.id,sectionId).all<Line>()).results;
    const drafts=(await sql('SELECT d.* FROM drafts d JOIN assignments a ON a.id=d.assignment_id WHERE d.user_id=? AND a.section_id=?',user.id,sectionId).all()).results;
@@ -81,7 +85,10 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
    const students=(await sql("SELECT u.id,u.name,u.email FROM users u JOIN enrollments e ON e.user_id=u.id WHERE e.section_id=? AND u.role='student'",sectionId).all()).results;
    const submissions=(await sql('SELECT e.*,a.title,a.points,u.name FROM entries e JOIN assignments a ON a.id=e.assignment_id JOIN users u ON u.id=e.user_id WHERE a.section_id=?',sectionId).all()).results;
    const attempts=(await sql('SELECT t.*,u.name,a.title FROM attempts t JOIN users u ON u.id=t.user_id JOIN assignments a ON a.id=t.assignment_id WHERE a.section_id=? ORDER BY t.created_at DESC LIMIT 200',sectionId).all()).results;
-   return json({students,submissions,attempts});
+   const progress=(await sql("SELECT a.id,a.title,a.points,a.published,COUNT(DISTINCT e.user_id) AS completed,(SELECT COUNT(DISTINCT t.user_id) FROM attempts t WHERE t.assignment_id=a.id) AS started FROM assignments a LEFT JOIN entries e ON e.assignment_id=a.id WHERE a.section_id=? GROUP BY a.id ORDER BY a.unit,a.sort_order",sectionId).all()).results;
+   const commonFeedback=(await sql('SELECT t.feedback,COUNT(*) AS count FROM attempts t JOIN assignments a ON a.id=t.assignment_id WHERE a.section_id=? AND t.correct=0 GROUP BY t.feedback ORDER BY count DESC LIMIT 8',sectionId).all()).results;
+   const extensions=(await sql('SELECT x.* FROM extensions x JOIN assignments a ON a.id=x.assignment_id WHERE a.section_id=?',sectionId).all()).results;
+   return json({students,submissions,attempts,progress,commonFeedback,extensions});
   }
   const match=path.match(/^\/api\/assignments\/([a-zA-Z0-9-]+)\/(draft|check|post|release)$/);
   if(match&&req.method==='POST'){
@@ -92,22 +99,33 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
     if(!instructor)fail('Instructor access required.',403);
     if(!['locked','open','scheduled'].includes(data.mode))fail('Invalid release mode.');
     if(data.mode==='scheduled'&&(!data.opensAt||!Number.isFinite(Date.parse(data.opensAt))))fail('Choose a valid opening time.');
-    await env.DB.batch([sql('UPDATE assignments SET release_mode=?,opens_at=? WHERE id=?',data.mode,data.mode==='scheduled'?new Date(data.opensAt).toISOString():null,id),sql('INSERT INTO audit(id,actor,action,target,details) VALUES(?,?,?,?,?)',crypto.randomUUID(),user.id,'assignment.release',id,JSON.stringify(data))]);return json({ok:true});
+    if(data.mode!=='locked'){
+     const key=await sql('SELECT accepted FROM answer_keys WHERE assignment_id=?',id).first<any>();const answers=JSON.parse(key?.accepted||'[]');
+     if(!answers.length||answers.some((v:Line[])=>validate(v,accounts))||!a.expected_reference)fail('Complete the answer key and reference in the assignment builder before releasing.');
+     for(const answer of answers){const cash=answer.filter((l:Line)=>l.account==='1010').reduce((s:number,l:Line)=>s+l.debit-l.credit,0);if((cash===0)!==(a.cash_flow==='none'))fail('Review the cash flow classification in the assignment builder.');}
+    }
+    let dueAt=a.due_at;if('dueAt' in data){if(data.dueAt!==null&&(typeof data.dueAt!=='string'||!Number.isFinite(Date.parse(data.dueAt))))fail('Choose a valid due date.');dueAt=data.dueAt?new Date(data.dueAt).toISOString():null;}
+    if(data.mode==='scheduled'&&dueAt&&new Date(data.opensAt).toISOString()>dueAt)fail('The due date must follow the opening date.');
+    await env.DB.batch([sql('UPDATE assignments SET release_mode=?,opens_at=?,due_at=?,published=CASE WHEN ?=\'locked\' THEN published ELSE 1 END WHERE id=?',data.mode,data.mode==='scheduled'?new Date(data.opensAt).toISOString():null,dueAt,data.mode,id),sql('INSERT INTO audit(id,actor,action,target,details) VALUES(?,?,?,?,?)',crypto.randomUUID(),user.id,'assignment.release',id,JSON.stringify(data))]);return json({ok:true});
    }
-   if(user.role!=='student')fail('Only students can submit accounting work.',403);
-   if(!open(a))fail('Your instructor has not released this assignment.',403);
-   if(a.due_at&&Date.parse(a.due_at)<Date.now())fail('The assignment deadline has passed.',403);
-   if(await sql('SELECT id FROM entries WHERE user_id=? AND assignment_id=?',user.id,id).first())fail('This transaction has already been posted.',409);
+   const preview=instructor&&action==='check'&&url.searchParams.get('preview')==='true';
+   if(user.role!=='student'&&!preview)fail('Only students can submit accounting work.',403);
+   if(!preview&&!open(a))fail('Your instructor has not released this assignment.',403);
+   const extension=await sql('SELECT due_at FROM extensions WHERE user_id=? AND assignment_id=?',user.id,id).first<any>();
+   if(!preview&&(extension?.due_at||a.due_at)&&Date.parse(extension?.due_at||a.due_at)<Date.now())fail('The assignment deadline has passed.',403);
+   if(!preview&&await sql('SELECT id FROM entries WHERE user_id=? AND assignment_id=?',user.id,id).first())fail('This transaction has already been posted.',409);
    if(action==='draft'){await sql('INSERT INTO drafts VALUES(?,?,?) ON CONFLICT(user_id,assignment_id) DO UPDATE SET body=excluded.body',user.id,id,JSON.stringify(data)).run();return json({ok:true});}
    const key=await sql('SELECT accepted FROM answer_keys WHERE assignment_id=?',id).first<{accepted:string}>();
    if(!key)fail('Assignment answer key is unavailable.',503);
    let feedback=validate(data.lines,accounts,JSON.parse(key.accepted));
+   if(!feedback)feedback=referenceFeedback(data.reference,a.expected_reference);
    if(!feedback&&(typeof data.date!=='string'||data.date!==a.transaction_date||data.date<a.period_start||data.date>a.period_end))feedback='Review the transaction date and the open accounting period.';
    if(!feedback&&(typeof data.memo!=='string'||!data.memo.trim()||data.memo.length>500||typeof data.reference!=='string'||data.reference.length>80))feedback='Add a memo and use a reference of at most 80 characters.';
+   if(preview)return json({correct:!feedback,feedback:feedback||'Your preview entry is correct. No student records were changed.'});
    const attempt=sql('INSERT INTO attempts(id,user_id,assignment_id,body,feedback,correct) VALUES(?,?,?,?,?,?)',crypto.randomUUID(),user.id,id,JSON.stringify(data),feedback||'Entry is correct.',feedback?0:1);
    if(feedback||action==='check'){await attempt.run();return json({correct:!feedback,feedback:feedback||'Your entry is correct and ready to post.'});}
    const entryId=crypto.randomUUID();
-   try{await env.DB.batch([attempt,sql('INSERT INTO entries(id,user_id,assignment_id,date,memo,reference) VALUES(?,?,?,?,?,?)',entryId,user.id,id,data.date,data.memo.trim(),data.reference),...data.lines.map((l:Line)=>sql('INSERT INTO lines(entry_id,account,debit,credit) VALUES(?,?,?,?)',entryId,l.account,l.debit,l.credit)),sql('DELETE FROM drafts WHERE user_id=? AND assignment_id=?',user.id,id)]);}catch(e){if(String(e).includes('UNIQUE'))fail('This transaction has already been posted.',409);throw e;}
+   try{await env.DB.batch([attempt,sql('INSERT INTO entries(id,user_id,assignment_id,date,memo,reference) VALUES(?,?,?,?,?,?)',entryId,user.id,id,data.date,data.memo.trim(),data.reference.trim()),...data.lines.map((l:Line)=>sql('INSERT INTO lines(entry_id,account,debit,credit) VALUES(?,?,?,?)',entryId,l.account,l.debit,l.credit)),sql('DELETE FROM drafts WHERE user_id=? AND assignment_id=?',user.id,id)]);}catch(e){if(String(e).includes('UNIQUE'))fail('This transaction has already been posted.',409);throw e;}
    return json({correct:true,posted:true,feedback:a.explanation});
   }
   return json({error:'Route not found.'},404);

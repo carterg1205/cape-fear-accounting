@@ -28,3 +28,11 @@ Sample posted test data is excluded from the deliverable. A new checkout starts 
 - 50 HTTP integration checks passed on a fresh local D1 database. New coverage includes generated passphrase login, automatic enrollment, forced student role despite submitted role fields, unauthorized student and cross-section requests, invalid input, duplicate normalized email, concurrent duplicate creation, owner access across sections and absence of credentials in roster/audit records.
 - TypeScript and production build passed. No new migration is needed; account creation uses the existing users, enrollments and audit tables.
 - Initial passphrases are displayed after creation and can be copied; no automatic email delivery or password reset UI is included.
+
+## Phase 2 classroom update
+
+- 13 unit/DOM tests pass, including yellow review feedback, exact required references, course-unit preservation in the builder, exact money amounts, retained earnings/equity/cash-flow relationships and Eastern daylight-saving conversions.
+- 50 existing HTTP regression checks and 64 additional Phase 2 checks pass on a fresh local D1/R2 environment. Coverage includes draft/published visibility, private answer keys, alternative answer configurations, preview without student writes, reference rejection during posting, frozen source content, private R2 uploads/reads/removal, document type and count restrictions, release/schedule/section gates, extensions, report unlocking, cross-student privacy, financial totals, progress and filtered CSV exports.
+- Migration 0003 is additive. It retains all posted entries, backfills source-document references and adds zero-balance course accounts, publishing/report controls, extensions and private R2 document metadata. Existing-ledger preservation is checked during local upgrade.
+- Full desktop/mobile visual QA remains unverified because the available browser binary download failed earlier. DOM workflow and API checks do not replace assistive technology or institution review.
+- Full-course exercises and controlled semester baselines remain Phase 3 work; the Course Plan and COURSE_ALIGNMENT.md specify the source outline's progression and scope limits.

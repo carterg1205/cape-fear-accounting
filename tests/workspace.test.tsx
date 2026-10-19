@@ -54,3 +54,28 @@ describe('instructor student management',()=>{
   expect((screen.getByLabelText('Student name') as HTMLInputElement).value).toBe('');
  });
 });
+
+describe('wrong-entry feedback',()=>{
+ it('uses yellow review styling and words when the entry is wrong',async()=>{
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url.includes('config')?{local:true}:url.includes('/check')?{correct:false,feedback:'The reference number must match the source document exactly.'}:structuredClone(state)})));
+  render(<App/>);await screen.findByText('Welcome back, Jamie.');fireEvent.click(screen.getByRole('button',{name:'Open workspace'}));fireEvent.click(screen.getByRole('button',{name:'Check entry'}));
+  const alert=await screen.findByRole('alert');expect(alert.classList.contains('warning')).toBe(true);expect(alert.textContent).toContain('Needs review.');expect(alert.textContent).toContain('reference number');expect(alert.classList.contains('notice')).toBe(false);
+ });
+});
+
+describe('course-aligned assignment authoring',()=>{
+ it('saves an unpublished draft with exact cents and preserves the selected course unit',async()=>{
+  const {AssignmentBuilder}=await import('../src/AssignmentBuilder');
+  const call=vi.fn(async(path:string,data?:any)=>path==='assignments/save'?{id:'new-assignment'}:{assignment:{...data},accepted:[],documents:[],frozen:false});
+  const onSaved=vi.fn(async()=>{});
+  render(<AssignmentBuilder accounts={state.accounts} section={{id:'acg201',name:'ACG 201'}} sections={[{id:'acg201',name:'ACG 201'}]} editId="" initialUnit={7} call={call} onSaved={onSaved} onPreview={()=>{}}/>);
+  expect((screen.getByLabelText('Course unit') as unknown as HTMLSelectElement).value).toBe('7');
+  expect(screen.getByText(/Provide the bad-debt expense amount/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Assignment title'),{target:{value:'A receivable exercise'}});
+  fireEvent.change(screen.getByLabelText('Required document reference'),{target:{value:'AR-301'}});
+  fireEvent.change(screen.getByLabelText('Document total ($)'),{target:{value:'12.29'}});
+  fireEvent.click(screen.getByRole('button',{name:'Save as draft'}));
+  await waitFor(()=>expect(onSaved).toHaveBeenCalledOnce());
+  const args=call.mock.calls.find(c=>c[0]==='assignments/save')![1];expect(args.published).toBe(false);expect(args.document.totalCents).toBe(1229);expect(args.unit).toBe(7);expect(args.reference).toBe('AR-301');
+ });
+});

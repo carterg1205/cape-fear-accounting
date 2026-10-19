@@ -1,16 +1,28 @@
 # Cape Fear Outfitters Accounting
 
-A React + TypeScript accounting classroom application with a Cloudflare Worker API, D1 persistence, and Tailwind CSS. Source is maintained on the `staging` branch of [carterg1205/cape-fear-accounting](https://github.com/carterg1205/cape-fear-accounting/tree/staging). No ChatGPT Sites dependency. **Not yet deployed to Cloudflare.**
+A React + TypeScript accounting classroom application with a Cloudflare Worker API, D1 persistence, and Tailwind CSS. Source is maintained on the `staging` branch of [carterg1205/cape-fear-accounting](https://github.com/carterg1205/cape-fear-accounting/tree/staging). No ChatGPT Sites dependency. **Staging is connected to Cloudflare Workers Builds. Production deployment requires explicit approval.**
 
-## Phase 1 implemented
+## Working application
 
 - Responsive student and instructor workspaces, separate role navigation.
 - Three realistic source documents: stock issuance, inventory bought on account, and earned service revenue. Students manually select accounts and enter dates and amounts; no document-to-entry automation.
 - Compound journal lines, persistent drafts, unlimited checks, server-only answer keys, feedback, and revalidation at posting. Equivalent split lines and reordered lines are accepted. A check never posts.
 - Atomic D1 posting, unique student/assignment constraint against concurrent duplicates, immutable posted entries and lines, attempt history.
-- Actual posted-data company snapshot, journal-derived ledger, chart of 18 accounts, unadjusted trial balance, and completion grades. Zero opening baseline represents a new corporation; no fabricated balances.
+- Actual posted-data company snapshot, journal-derived ledger, course account chart, unadjusted trial balance, and completion grades. Zero opening baseline represents a new corporation; no fabricated balances.
 - Instructor section roster, student account creation with automatic enrollment and one-time display of generated login credentials, release/re-lock controls, scheduled openings enforced on the server, submission history, beta gradebook, CSV export. These are early Phase 2 foundations.
 - Provisioned passphrase authentication with PBKDF2 hashes, HttpOnly/SameSite sessions, HTTPS Secure cookies, backend roles and section scoping, login throttling, origin checks, and release audit records.
+
+## Phase 2 classroom features
+
+- **Assignments / Assignment Builder:** create and edit journal-entry exercises; specify unit, order, instructions, points, dates, required reference, source document details, cash-flow category, accepted alternatives and the explanation after posting. Save hidden drafts or publish locked activities to the current section. Copy to another authorized section when needed. Once students start checking work, source content and answer keys are protected; copy the activity to create a new version.
+- **Documents:** upload up to two PDF, PNG, JPEG or WebP source files per assignment, up to 10 MB each. Files remain private in R2 and are served through authenticated section/release checks. View documents beside the manual journal workspace or open the original. Unstarted exercises support removing/replacing files.
+- **Preview as student:** preview a saved assignment and check a manually prepared entry without writing student attempts, grades or ledger entries. Posting and draft-saving are disabled in instructor preview.
+- **Scheduling:** manual release, scheduled opening, re-locking, editable deadlines and individual extensions. Times entered in the UI use America/New_York, including daylight saving. Extensions do not override locks.
+- **Settings:** configure simulation course weight and unlock financial statements (locked by default).
+- **Progress and Gradebook:** completion tracking, common feedback, student/assignment filters, submission history and authenticated CSV grade exports.
+- **Company Financials / Financial Statements:** cumulative income statement, retained earnings, balance sheet and cash-flow views from each student's posted entries. Instructor views require selection of an enrolled student. Students cannot access anyone else's records.
+- Incorrect entries now display a **yellow Needs review** message. Both checking and posting require a case-sensitive match to the document reference, ignoring outside whitespace. A balanced entry with a wrong reference cannot post.
+- **Course Plan:** a 13-unit progression based on the uploaded ACG 201 outline. The builder shows prerequisites and scope limits for the chosen unit. See COURSE_ALIGNMENT.md for implementation boundaries and the remaining full-course work.
 
 ## Local development
 
@@ -32,6 +44,7 @@ For frontend hot reload, run `npm run dev` in a second terminal and use http://l
 ```bash
 npm run check
 npm run test:integration
+npm run test:classroom
 ```
 
 `check` runs accounting unit tests, TypeScript checking, and a production frontend build. Integration requires the local Worker and a **fresh, disposable** D1 database; it creates local demo users, releases exercises, posts entries, and tests login/roles, schedule gates, drafts, feedback, duplicate-post races, ledger totals, session revocation, and re-login persistence. Run it against a new checkout. Do not run it against a populated classroom database. No destructive reset script is supplied.
@@ -97,18 +110,18 @@ The generated initial passphrase is returned once and is not stored in plaintext
 
 ## Database and security boundaries
 
-Two SQL migrations create users, sessions, login counters, sections, enrollments, accounts, assignments, answer keys, drafts, entries, lines, attempts and audit records, then seed 3 fictional exercises. They seed no remote users. Release defaults to locked. Passwords are PBKDF2-SHA256 (100,000 iterations, chosen to fit the Workers Web Crypto iteration limit); sessions last 8 hours. Rate limiting is 20 login requests per client IP per 15-minute window. School networks share IPs, so production needs a reviewed throttling policy. Student account creation is available in the instructor dashboard; initial owner/instructor provisioning remains an administrative CLI task. Password reset, session revocation UI, passphrase rotation, and roster management UI remain to be built.
+Three SQL migrations create and extend users, sessions, login counters, sections, enrollments, accounts, assignments, answer keys, drafts, entries, lines, attempts and audit records, then seed 3 fictional exercises and additional zero-balance course accounts. The third migration adds private-document metadata, extensions, publishing/report controls, required references and source-content protections. They seed no remote users. Release defaults to locked. Passwords are PBKDF2-SHA256 (100,000 iterations, chosen to fit the Workers Web Crypto iteration limit); sessions last 8 hours. Rate limiting is 20 login requests per client IP per 15-minute window. School networks share IPs, so production needs a reviewed throttling policy. Student account creation is available in the instructor dashboard; initial owner/instructor provisioning remains an administrative CLI task. Password reset, session revocation UI, passphrase rotation, and roster management UI remain to be built.
 
 Only the authenticated student's posted lines feed their reports. Instructor queries require ownership of the section (or owner role). Students never receive answer keys. Submitted entry content and check feedback are visible to the assigned instructor. Posted records cannot be overwritten or deleted; an auditable reversal workflow is still needed before corrections can be offered.
 
 ## Deliberate remaining work
 
-- Verify Cloudflare staging build, migrations and deployment; provision instructor access.
-- Phase 2 assignment builder, accepted-answer editor, authenticated PDF/image uploads and R2 viewer, configurable points/attempts/grading/late rules, extensions and due-date editor, editable simulation weight, account recovery and remaining lifecycle controls.
+- Continue staging review and classroom usability testing; production remains pending explicit approval.
+- Additional exercise types, configurable attempts/accuracy grading and late policies, account recovery and remaining lifecycle controls.
 - Institutional privacy, security and accessibility review before real student use; broader cross-section and assistive technology testing.
 - Semester-approved opening records and versioned weekly baselines to support missed work without duplication. Phase 1 uses a zero baseline and independent sample assignments only.
-- Financial statements, T-accounts, adjusting/closing and post-closing reports, accounting-period administration, auditable reversals.
+- T-accounts, period-filtered/classified/adjusting/closing and post-closing reports, accounting-period administration, auditable reversals. Current financial report views are cumulative from incorporation.
 - All 13 editable course units, inventory calculations, reconciliation, ratios, cash flows and other reusable exercise types.
-- Due-date scoring and extensions: current sample assignments have no deadline, unlimited checks and full credit for correct posting. The API rejects overdue work when a due date is configured in D1, but has no late-policy configuration yet.
+- Beta grading remains unlimited checks and full points for a correct posted entry before the applicable deadline. Instructors can now edit due dates and grant extensions; configurable late policies remain future work.
 
 This application is a tested local beta, not university-approved or certified FERPA compliant. No real student data was imported.

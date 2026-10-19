@@ -13,3 +13,15 @@ export function validate(lines:Line[], accounts:Account[], accepted?:Line[][]){
 }
 export function trialBalance(accounts:Account[],lines:Line[]){return accounts.map(a=>{const net=lines.filter(l=>l.account===a.id).reduce((s,l)=>s+l.debit-l.credit,0);return {...a,debit:Math.max(net,0),credit:Math.max(-net,0),balance:a.normal==='debit'?net:-net};});}
 export function cents(s:string){if(!/^\d+(\.\d{1,2})?$/.test(s))throw Error('Enter a nonnegative amount with up to two decimals.');const [w,f='']=s.split('.');const n=Number(w)*100+Number(f.padEnd(2,'0'));if(!Number.isSafeInteger(n))throw Error('Amount too large.');return n;}
+
+export function referenceFeedback(reference:unknown,expected:string){return typeof reference==='string'&&reference.trim()===expected.trim()&&expected.trim()?null:'The reference number must match the source document exactly. Check its letters, numbers, and punctuation.';}
+export function financialStatements(accounts:Account[],lines:(Line&{date?:string;cash_flow?:string})[]){
+ const trial=trialBalance(accounts,lines),signed=(a:typeof trial[number])=>a.debit-a.credit;
+ const total=(type:string)=>trial.filter(a=>a.type===type).reduce((s,a)=>s+signed(a)*(type==='asset'||type==='expense'?1:-1),0);
+ const netIncome=total('revenue')-total('expense');
+ const balance=(id:string)=>{const a=trial.find(a=>a.id===id);return a?signed(a):0;};
+ const retainedEarnings=-balance('3100')+netIncome-balance('3200'),equity=total('equity')+netIncome;
+ const cashFlows={operating:0,investing:0,financing:0,unclassified:0};
+ for(const l of lines.filter(l=>l.account==='1010')){const category=l.cash_flow as keyof typeof cashFlows;cashFlows[category in cashFlows?category:'unclassified']+=l.debit-l.credit;}
+ return {trial,revenue:total('revenue'),expenses:total('expense'),netIncome,assets:total('asset'),liabilities:total('liability'),equity,commonStock:-balance('3010'),openingRetainedEarnings:-balance('3100'),dividends:balance('3200'),retainedEarnings,cash:balance('1010'),cashFlows,equationDifference:total('asset')-total('liability')-equity,through:lines.map(l=>l.date||'').sort().at(-1)||null};
+}
