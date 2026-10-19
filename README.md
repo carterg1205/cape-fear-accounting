@@ -125,3 +125,11 @@ Only the authenticated student's posted lines feed their reports. Instructor que
 - Beta grading remains unlimited checks and full points for a correct posted entry before the applicable deadline. Instructors can now edit due dates and grant extensions; configurable late policies remain future work.
 
 This application is a tested local beta, not university-approved or certified FERPA compliant. No real student data was imported.
+
+### Prepared course (Phase 3)
+
+Open **Course Builder → Use prepared course** to install all 13 units and 26 activities for a section. Installation selects the new edition and leaves every activity locked. Preview the stories and examples, customize the listed names/numbers, then release activities from **Assignments**. Saving regenerates the complete course's documents, keys and starting checkpoints. After student work begins, use **Create new edition**; old work is preserved in course history.
+
+The course edition and ledger checkpoint controls show earlier exercise sets and selected-unit records. Financial statements combine approved prior-unit starting records and current-unit student journal entries. Worksheet activities earn completion credit without adding journal entries. See `VALIDATION.md` for the simulation and versioning model.
+
+Run `node scripts/course-integration.mjs` after the original integration and classroom suites against the same disposable local worker/database.

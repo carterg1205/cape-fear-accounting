@@ -1,0 +1,10 @@
+import {describe,it,expect} from 'vitest';
+import {compileCourse} from '../worker/course-engine';
+import {defaultCourseParams} from '../shared/course-schema';
+describe('prepared course',()=>{
+ it('provides 26 activities, 13 lessons, balanced records and complete keys',()=>{const c=compileCourse({});expect(c.activities).toHaveLength(26);expect(c.snapshots).toHaveLength(13);for(const a of c.activities){expect(a.activity.lesson.example.steps.length).toBeGreaterThan(1);expect(a.activity.intro.length).toBeGreaterThan(30);if(a.activity.kind==='journal')for(const ls of a.accepted)expect(ls.reduce((v:number,l:any)=>v+l.debit-l.credit,0)).toBe(0);else expect(Object.keys(a.accepted.fields)).toEqual(a.activity.fields.map((f:any)=>f.id));}});
+ it('regenerates documents, journal keys and downstream analysis from one quantity change',()=>{const a=compileCourse({}),b=compileCourse({boardQty:8,boardCost:45000,manager:'Maya'});expect(b.activities[6].intro).toContain('Maya ordered 8');expect(b.activities[6].accepted[0][0].debit).toBe(360000);expect(b.activities[7].accepted[0][2].debit).toBe(90000);expect(b.activities[25].accepted.fields.inventory).not.toBe(a.activities[25].accepted.fields.inventory);});
+ it('rejects unsupported and inconsistent changes',()=>{for(const p of [{answer:100},{soldQty:15},{issuePrice:100},{residual:100000,newEquipment:100000,delivery:0,installation:0},{withheld:30000,grossPay:20000},{startDate:'2027-99-01'}])expect(()=>compileCourse(p)).toThrow();});
+ it('includes supplied opening records exactly once and excludes current work from starting snapshots',()=>{const c=compileCourse({});expect(c.snapshots[2].records.some((r:any)=>r.memo==='Advance tour booking deposit')).toBe(true);expect(c.snapshots[2].records.some((r:any)=>r.memo==='Time to adjust')).toBe(false);expect(c.snapshots[11].records.filter((r:any)=>r.memo==='Payment of declared dividend')).toHaveLength(1);});
+ it('limits edited defaults to the whitelist and produces stable independent compilations',()=>{const p=defaultCourseParams();expect(compileCourse(p)).toEqual(compileCourse(p));});
+});

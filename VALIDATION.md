@@ -36,3 +36,21 @@ Sample posted test data is excluded from the deliverable. A new checkout starts 
 - Migration 0003 is additive. It retains all posted entries, backfills source-document references and adds zero-balance course accounts, publishing/report controls, extensions and private R2 document metadata. Existing-ledger preservation is checked during local upgrade.
 - Full desktop/mobile visual QA remains unverified because the available browser binary download failed earlier. DOM workflow and API checks do not replace assistive technology or institution review.
 - Full-course exercises and controlled semester baselines remain Phase 3 work; the Course Plan and COURSE_ALIGNMENT.md specify the source outline's progression and scope limits.
+
+## Phase 3 — prepared course and interface
+
+- 18 unit/DOM tests pass, including course completeness, balanced generated records, cross-unit regeneration, immutable starting checkpoints and invalid parameter dependencies.
+- 50 original API checks, 64 classroom checks and 33 prepared-course HTTP checks pass against a fresh disposable D1 database.
+- Prepared-course checks cover install/edit/revision conflicts, hidden locked lessons, student/instructor authorization, nonjournal grading, exact references, preview without freezing, frozen editions, protected editing routes, journal revisions, starting records without duplicate posting, statement reconciliation and preserved archived work.
+- `npm run check` runs tests, TypeScript and the production build. CI also runs all three HTTP suites and migration 0004.
+- Browser verification passed with Chromium headless shell: instructor sign-in, course installation, assignment preview, desktop and 390-pixel mobile layouts. No browser runtime errors or page-level horizontal overflow were observed.
+
+## Teaching model
+
+The 13 units contain 26 prepared activities. Each unit supplies a story introduction, concepts, scope notes and a worked example with different numbers. Analysis, periodic inventory, reconciliation, cash-flow classification and statement analysis use manually entered worksheet answers; journal activities require manually entered accounts, dates and amounts. Wrong responses use yellow **Needs review** text. Reference matching applies to both activity types.
+
+A single server-side compiler generates source documents, answer keys and the next unit's approved records from restricted parameters. Names, whole-cent amounts, bounded quantities, rates, starting month and activity points are editable; accounts, formulas and grading logic are fixed. Dependency checks prevent overselling inventory, excessive write-offs, negative cash, below-par stock issues and invalid depreciation assumptions.
+
+Each unit starts from labeled instructor-provided selected records, plus that student's current-unit journal entries. Earlier student entries are preserved, but replaced by the approved prior-unit checkpoint for later lessons, never double counted. These are selected simulation transactions, not a complete recurring monthly accounting cycle. Worksheet completions earn points without creating fictitious student journal entries. The period advances one simulated month per unit; release dates remain independent.
+
+Before student attempts, saves regenerate the complete edition atomically with a revision check. After any attempt, scenario edits require a new edition. Earlier editions remain read-only for student submissions, with original keys, grades and entries preserved. Scheduling and deadline extensions remain editable.

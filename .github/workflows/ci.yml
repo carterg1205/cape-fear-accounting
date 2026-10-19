@@ -26,3 +26,4 @@ jobs:
           done
           npm run test:integration
           npm run test:classroom
+          node scripts/course-integration.mjs
