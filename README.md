@@ -48,20 +48,24 @@ cd cape-fear-accounting
 npm ci
 ```
 
-Keep changes on staging or feature branches and review before a production release. Cloudflare deployment has not been configured or run.
+Keep changes on staging or feature branches and review before a production release. A successful Cloudflare staging deployment still needs verification.
 
 ## Cloudflare staging setup
 
-No Cloudflare integration was available during implementation. These commands have **not** been run remotely. They create new resources for this application only:
+The dedicated staging D1 database and R2 bucket have been created through the Cloudflare dashboard. Their bindings are in `wrangler.staging.jsonc`. Do not overwrite that file with the example or recreate these resources.
 
-```bash
-npx wrangler login
-npx wrangler d1 create cape-fear-accounting-staging
-npx wrangler r2 bucket create cape-fear-accounting-staging
-cp wrangler.staging.example.jsonc wrangler.staging.jsonc
-```
+For Cloudflare Workers Builds, use:
 
-Replace the placeholder database ID with the newly returned D1 ID. Never copy an existing business project's ID. The R2 binding is reserved for Phase 2 document uploads; Phase 1 sample documents are structured records in D1.
+- Worker name: `cape-fear-accounting-staging`
+- Git / production branch: `staging` (the app files are not on `main`)
+- Root directory: `/`
+- Build command: `npm run build`
+- Deploy command: `npx wrangler d1 migrations apply DB --remote --config wrangler.staging.jsonc && npx wrangler deploy --config wrangler.staging.jsonc`
+- Preview builds: off during initial staging setup.
+
+After changing the build branch, start a build from the latest staging commit. Retrying an old failed main-branch build can still use the old commit and report that package.json is missing. The build token must allow deployment and D1 migration operations.
+
+The R2 binding is reserved for Phase 2 document uploads; Phase 1 sample documents are structured records in D1. For a manual CLI deployment, sign in with `npx wrangler login` and apply migrations:
 
 ```bash
 npx wrangler d1 migrations apply DB --remote --config wrangler.staging.jsonc
@@ -83,7 +87,7 @@ npm run build
 npx wrangler deploy --config wrangler.staging.jsonc
 ```
 
-Record the returned staging URL. Cloudflare Workers Builds can later connect the `staging` GitHub branch using this build and deploy command, once authorized. No connection was made here. **Production requires Carter's explicit approval**, a separate D1 database and R2 bucket, `DEV_AUTH=false`, and reviewed deployment settings. Never deploy `wrangler.jsonc` as a remote environment: it is a local configuration.
+Record the returned staging URL and verify the deployment. **Production requires Carter's explicit approval**, a separate D1 database and R2 bucket, `DEV_AUTH=false`, and reviewed deployment settings. Never deploy `wrangler.jsonc` as a remote environment: it is a local configuration.
 
 ## Database and security boundaries
 
@@ -93,7 +97,7 @@ Only the authenticated student's posted lines feed their reports. Instructor que
 
 ## Deliberate remaining work
 
-- Cloudflare resource creation, authentication and staging deployment.
+- Verify Cloudflare staging build, migrations and deployment; provision instructor access.
 - Phase 2 assignment builder, accepted-answer editor, authenticated PDF/image uploads and R2 viewer, configurable points/attempts/grading/late rules, extensions and due-date editor, editable simulation weight, account lifecycle UI.
 - Institutional privacy, security and accessibility review before real student use; broader cross-section and assistive technology testing.
 - Semester-approved opening records and versioned weekly baselines to support missed work without duplication. Phase 1 uses a zero baseline and independent sample assignments only.
