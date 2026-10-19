@@ -20,7 +20,7 @@ export function compileCourse(input:any){
   const guide=courseUnits[u-1],journal=Array.isArray(answer),kind=journal?'journal':u===5?'inventory':u===6?'reconciliation':u===12?'classification':u===13?'ratios':u===1?'analysis':'statements';
   const activity:ActivityData={kind,intro,fields:journal?[]:answer.fields,table,lesson:{title:guide.title,intro:`${s('manager')} is growing ${s('company')}, a coastal shop in Wilmington. ${guide.builds}`,concepts:[guide.focus,guide.limits],example:examples[u-1]}};
   const lines=journal?answer:[],total=journal?lines.reduce((v,l)=>v+l.debit,0):0;
-  activities.push({key,unit:u,title,intro,date:date(u,key.endsWith('b')?25:15),reference:`CFO-U${String(u).padStart(2,'0')}-${key.endsWith('b')?'B':'A'}`,detail,activity,accepted:journal?[lines.filter(l=>l.debit||l.credit)]:{fields:answer.expected},flow,total});
+  activities.push({key,unit:u,title,intro,date:date(u,key.endsWith('b')?25:15),reference:`CFO-U${String(u).padStart(2,'0')}-${key.endsWith('b')?'B':'A'}`,detail,activity,accepted:journal?[lines.filter(l=>l.debit||l.credit)]:{fields:answer.expected},flow:journal&&lines.filter(l=>l.account==='1010').reduce((v,l)=>v+l.debit-l.credit,0)===0?'none':flow,total:key==='u4b'?n('soldQty')*n('boardPrice'):key==='u9b'?n('grossPay'):total});
   if(journal)addRecord(u,title,lines,flow,key.endsWith('b')?25:15);
  };
  const snapshot=(u:number)=>snapshots.push({unit:u,records:structuredClone(records)});

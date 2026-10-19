@@ -39,7 +39,7 @@ Sample posted test data is excluded from the deliverable. A new checkout starts 
 
 ## Phase 3 — prepared course and interface
 
-- 18 unit/DOM tests pass, including course completeness, balanced generated records, cross-unit regeneration, immutable starting checkpoints and invalid parameter dependencies.
+- 19 unit/DOM tests pass, including course completeness, balanced generated records, cross-unit regeneration, immutable starting checkpoints and invalid parameter dependencies.
 - 50 original API checks, 64 classroom checks and 33 prepared-course HTTP checks pass against a fresh disposable D1 database.
 - Prepared-course checks cover install/edit/revision conflicts, hidden locked lessons, student/instructor authorization, nonjournal grading, exact references, preview without freezing, frozen editions, protected editing routes, journal revisions, starting records without duplicate posting, statement reconciliation and preserved archived work.
 - `npm run check` runs tests, TypeScript and the production build. CI also runs all three HTTP suites and migration 0004.
