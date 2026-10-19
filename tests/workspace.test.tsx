@@ -32,3 +32,25 @@ describe('student manual workspace',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Save draft'}));await waitFor(()=>expect(calls.some(c=>c.url.endsWith('/draft'))).toBe(true));
  });
 });
+
+describe('instructor student management',()=>{
+ it('creates an enrolled student, shows the generated passphrase, and allows dismissing it',async()=>{
+  let student:any=null;
+  vi.stubGlobal('fetch',vi.fn(async(url:string,options:any)=>{
+   calls.push({url,options});
+   const instructorState={...structuredClone(state),user:{id:'i',name:'Carter Godwin',role:'owner'},section:{id:'acg201',name:'ACG 201',weight:5}};
+   if(url.includes('/students?')){const body=JSON.parse(options.body);student={id:'new-student',name:body.name,email:body.email};return {ok:true,json:async()=>({student,passphrase:'generated-test-passphrase',section:{id:'acg201',name:'ACG 201'}})};}
+   return {ok:true,json:async()=>url.includes('/config')?{local:true}:url.includes('/instructor')?{students:student?[student]:[],submissions:[],attempts:[]}:instructorState};
+  }));
+  render(<App/>);await screen.findByText('Welcome back, Carter.');
+  fireEvent.click(screen.getByRole('button',{name:'Students'}));
+  fireEvent.change(screen.getByLabelText('Student name'),{target:{value:'Test Student'}});
+  fireEvent.change(screen.getByLabelText('Student email'),{target:{value:'test@example.test'}});
+  fireEvent.click(screen.getByRole('button',{name:'Create student account'}));
+  await screen.findByText('generated-test-passphrase');
+  const call=calls.find(c=>c.url.includes('/students?'));expect(call!.url).toBe('/api/students?section=acg201');expect(JSON.parse(call!.options.body)).toEqual({name:'Test Student',email:'test@example.test'});
+  fireEvent.click(screen.getByRole('button',{name:'Dismiss login details'}));
+  expect(screen.queryByText('generated-test-passphrase')).toBeNull();
+  expect((screen.getByLabelText('Student name') as HTMLInputElement).value).toBe('');
+ });
+});

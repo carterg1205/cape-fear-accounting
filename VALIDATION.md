@@ -21,3 +21,10 @@ Date: October 19, 2026. Environment: local Cloudflare Wrangler / workerd and per
 The local agent environment required a temporary network-interface shim to start Wrangler, and the server and HTTP client had to run in the same network namespace. Neither workaround is part of the app or required by the normal documented development workflow.
 
 Sample posted test data is excluded from the deliverable. A new checkout starts with no user accounts, zero balances, and locked assignments after migration. The remote configuration explicitly disables development login.
+
+## Student account creation update
+
+- 8 unit/DOM tests passed, including creating a student from the owner dashboard, displaying the generated login details and dismissing them.
+- 50 HTTP integration checks passed on a fresh local D1 database. New coverage includes generated passphrase login, automatic enrollment, forced student role despite submitted role fields, unauthorized student and cross-section requests, invalid input, duplicate normalized email, concurrent duplicate creation, owner access across sections and absence of credentials in roster/audit records.
+- TypeScript and production build passed. No new migration is needed; account creation uses the existing users, enrollments and audit tables.
+- Initial passphrases are displayed after creation and can be copied; no automatic email delivery or password reset UI is included.

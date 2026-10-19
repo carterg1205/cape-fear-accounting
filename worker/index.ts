@@ -6,7 +6,7 @@ function fail(message:string,status=400):never {throw Object.assign(new Error(me
 const digest=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s)))).map(b=>b.toString(16).padStart(2,'0')).join('');
 async function password(secret:string,salt:string){const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(secret),'PBKDF2',false,['deriveBits']);return Array.from(new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',salt:new TextEncoder().encode(salt),iterations:100000,hash:'SHA-256'},key,256))).map(b=>b.toString(16).padStart(2,'0')).join('');}
 const open=(a:any)=>a.release_mode==='open'||(a.release_mode==='scheduled'&&a.opens_at&&Date.parse(a.opens_at)<=Date.now());
-async function body(req:Request){if(Number(req.headers.get('content-length')||0)>20000)fail('Request too large.',413);const t=await req.text();if(t.length>20000)fail('Request too large.',413);try{return JSON.parse(t);}catch{fail('Invalid JSON.');}}
+async function body(req:Request){if(Number(req.headers.get('content-length')||0)>20000)fail('Request too large.',413);const t=await req.text();if(t.length>20000)fail('Request too large.',413);try{const value=JSON.parse(t);if(!value||typeof value!=='object'||Array.isArray(value))fail('Expected a JSON object.');return value;}catch{fail('Invalid JSON object.');}}
 export default {async fetch(req:Request,env:Env):Promise<Response>{
  const url=new URL(req.url),path=url.pathname;
  if(!path.startsWith('/api/'))return env.ASSETS.fetch(req);
@@ -46,6 +46,26 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
   const section=sections.find(s=>s.id===sectionId);
   const instructor=user.role==='owner'||(user.role==='instructor'&&section?.instructor_id===user.id);
   const accounts=(await sql('SELECT * FROM accounts ORDER BY id').all<Account>()).results;
+  if(path==='/api/students'&&req.method==='POST'){
+   if(!instructor)fail('Instructor access required.',403);
+   const data=await body(req);
+   const name=typeof data.name==='string'?data.name.trim():'';
+   const email=typeof data.email==='string'?data.email.trim().toLowerCase():'';
+   if(name.length<2||name.length>100)fail('Enter a student name between 2 and 100 characters.');
+   if(email.length>254||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail('Enter a valid student email address.');
+   const id=crypto.randomUUID();
+   const passphrase=Array.from(crypto.getRandomValues(new Uint8Array(18))).map(b=>b.toString(16).padStart(2,'0')).join('');
+   const salt=crypto.randomUUID();
+   const hash=await password(passphrase,salt);
+   try{
+    await env.DB.batch([
+     sql("INSERT INTO users(id,name,email,role,salt,password_hash) VALUES(?,?,?,'student',?,?)",id,name,email,salt,hash),
+     sql('INSERT INTO enrollments(user_id,section_id) VALUES(?,?)',id,sectionId),
+     sql('INSERT INTO audit(id,actor,action,target,details) VALUES(?,?,?,?,?)',crypto.randomUUID(),user.id,'student.create',id,JSON.stringify({sectionId}))
+    ]);
+   }catch(e){if(String(e).includes('UNIQUE'))fail('An account already uses that email. Use a different email; no changes were made.',409);throw e;}
+   return json({student:{id,name,email,role:'student'},section:{id:sectionId,name:section!.name},passphrase},201);
+  }
   if(path==='/api/state'&&req.method==='GET'){
    const assignments=(await sql('SELECT a.*,e.id AS entry_id,e.created_at AS submitted_at,(SELECT COUNT(*) FROM attempts t WHERE t.user_id=? AND t.assignment_id=a.id) AS attempts FROM assignments a LEFT JOIN entries e ON e.assignment_id=a.id AND e.user_id=? WHERE a.section_id=? ORDER BY a.transaction_date',user.id,user.id,sectionId).all()).results.map((a:any)=>{
     const unlocked=open(a);const safe={...a,unlocked};delete safe.explanation;

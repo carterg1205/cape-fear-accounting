@@ -8,7 +8,9 @@ if(!['localhost','127.0.0.1'].includes(new URL(base).hostname))throw Error('Inte
 const temp=mkdtempSync(join(tmpdir(),'cfo-tests-'));
 const testPass='Fictional-test-student-5729';
 const testEmail=`second-${Date.now()}@example.test`;
-try{const sql=execFileSync(process.execPath,['scripts/provision-user.mjs',testEmail,'Second Student','student'],{env:{...process.env,CFO_PASSPHRASE:testPass}});writeFileSync(join(temp,'user.sql'),sql);execFileSync(process.execPath,['node_modules/wrangler/bin/wrangler.js','d1','execute','DB','--local','--file',join(temp,'user.sql')],{stdio:'pipe'});}finally{rmSync(temp,{recursive:true});}
+const ownerEmail=`owner-${Date.now()}@example.test`;
+const persistArgs=process.env.CFO_TEST_PERSIST?['--persist-to',process.env.CFO_TEST_PERSIST]:[];
+try{const sql=execFileSync(process.execPath,['scripts/provision-user.mjs',testEmail,'Second Student','student'],{env:{...process.env,CFO_PASSPHRASE:testPass}});const ownerSql=execFileSync(process.execPath,['scripts/provision-user.mjs',ownerEmail,'Test Owner','owner'],{env:{...process.env,CFO_PASSPHRASE:testPass}});writeFileSync(join(temp,'user.sql'),Buffer.concat([sql,ownerSql,Buffer.from("INSERT INTO sections(id,name) VALUES('other-test','Other Test Section');")]));execFileSync(process.execPath,['node_modules/wrangler/bin/wrangler.js','d1','execute','DB','--local','--file',join(temp,'user.sql'),...persistArgs],{stdio:'pipe'});}finally{rmSync(temp,{recursive:true});}
 const clients={student:'',instructor:'',second:''};let checks=0;
 async function request(who,path,data,status=200){const r=await fetch(base+'/api/'+path,{method:data===undefined?'GET':'POST',headers:{Origin:base,'Content-Type':'application/json',Cookie:clients[who]||''},body:data===undefined?undefined:JSON.stringify(data)});const d=await r.json();assert.equal(r.status,status,JSON.stringify(d));checks++;if(r.headers.get('set-cookie'))clients[who]=r.headers.get('set-cookie').split(';')[0];return d;}
 await request('student','state',undefined,401);
@@ -42,7 +44,27 @@ await request('second','login',{email:testEmail,password:testPass});
 const second=await request('second','state');assert.equal(second.entries.length,0);assert.equal(second.lines.length,0);assert.equal(second.drafts.length,0);assert.equal(second.assignments.filter(a=>a.entry_id).length,0);
 await request('second','instructor',undefined,403);
 const a=await request('instructor','instructor');assert.equal(a.submissions.length,3);assert.ok(a.attempts.some(a=>!a.correct));
+// Student account creation must be scoped, atomic, and never grant staff roles.
+await request('student','students',{name:'Unauthorized Student',email:'no-access@example.test'},403);
+await request('instructor','students?section=other-test',{name:'Wrong Section',email:'wrong-section@example.test'},403);
+await request('instructor','students',{name:'A',email:'invalid'},400);
+await request('instructor','students',null,400);
+const created=await request('instructor','students',{name:'  Taylor Student  ',email:' TAYLOR@example.test ',role:'owner'},201);
+assert.equal(created.student.name,'Taylor Student');assert.equal(created.student.email,'taylor@example.test');assert.equal(created.student.role,'student');assert.equal(created.section.id,'acg201');assert.match(created.passphrase,/^[a-f0-9]{36}$/);
+await request('instructor','students',{name:'Duplicate',email:'Taylor@EXAMPLE.test'},409);
+await request('created','login',{email:created.student.email,password:created.passphrase});
+const createdState=await request('created','state');assert.equal(createdState.user.role,'student');assert.equal(createdState.entries.length,0);assert.equal(createdState.sections.length,1);assert.equal(createdState.sections[0].id,'acg201');
+await request('created','instructor',undefined,403);
+const roster=await request('instructor','instructor');assert.equal(roster.students.filter(s=>s.email==='taylor@example.test').length,1);assert.ok(!JSON.stringify(roster).includes(created.passphrase));assert.ok(!JSON.stringify(roster).includes('password_hash'));
+const raceBody=JSON.stringify({name:'Race Student',email:'race@example.test'});
+const races=await Promise.all([0,1].map(()=>fetch(base+'/api/students',{method:'POST',headers:{Origin:base,'Content-Type':'application/json',Cookie:clients.instructor},body:raceBody})));
+assert.deepEqual(races.map(r=>r.status).sort(),[201,409]);checks+=2;
+await request('owner','login',{email:ownerEmail,password:testPass});
+const other=await request('owner','students?section=other-test',{name:'Other Section Student',email:'other@example.test'},201);assert.equal(other.section.id,'other-test');
+const ownRoster=await request('instructor','instructor');assert.ok(!ownRoster.students.some(s=>s.email===other.student.email));
+const audit=execFileSync(process.execPath,['node_modules/wrangler/bin/wrangler.js','d1','execute','DB','--local','--json','--command',"SELECT action,details FROM audit WHERE action='student.create'",...persistArgs],{encoding:'utf8'});
+assert.ok(audit.includes('student.create'));assert.ok(!audit.includes(created.passphrase));
 const origin=await fetch(base+'/api/logout',{method:'POST',headers:{Origin:'https://untrusted.example',Cookie:clients.student}});assert.equal(origin.status,403);checks++;
 await request('student','logout',{});await request('student','state',undefined,401);
 await request('student','login',{demo:'student'});s=await request('student','state');assert.equal(s.entries.length,3);assert.equal(s.trial.find(a=>a.id==='1010').balance,2045000);
-console.log(`${checks} HTTP checks passed: authentication, roles, section isolation, locked/scheduled access, drafts, incorrect/correct entries, compound equivalence, concurrent posting, trial balance, instructor history, origin protection, logout, persisted re-login.`);
+console.log(`${checks} HTTP checks passed: authentication, roles, section isolation, locked/scheduled access, drafts, incorrect/correct entries, compound equivalence, concurrent posting, trial balance, instructor history, origin protection, logout, persisted re-login, student creation, validation, duplicate/race handling, owner/instructor section boundaries, generated-credential login and safe audit records.`);

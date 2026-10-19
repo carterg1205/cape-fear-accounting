@@ -9,7 +9,7 @@ A React + TypeScript accounting classroom application with a Cloudflare Worker A
 - Compound journal lines, persistent drafts, unlimited checks, server-only answer keys, feedback, and revalidation at posting. Equivalent split lines and reordered lines are accepted. A check never posts.
 - Atomic D1 posting, unique student/assignment constraint against concurrent duplicates, immutable posted entries and lines, attempt history.
 - Actual posted-data company snapshot, journal-derived ledger, chart of 18 accounts, unadjusted trial balance, and completion grades. Zero opening baseline represents a new corporation; no fabricated balances.
-- Instructor section roster, release/re-lock controls, scheduled openings enforced on the server, submission history, beta gradebook, CSV export. These are early Phase 2 foundations.
+- Instructor section roster, student account creation with automatic enrollment and one-time display of generated login credentials, release/re-lock controls, scheduled openings enforced on the server, submission history, beta gradebook, CSV export. These are early Phase 2 foundations.
 - Provisioned passphrase authentication with PBKDF2 hashes, HttpOnly/SameSite sessions, HTTPS Secure cookies, backend roles and section scoping, login throttling, origin checks, and release audit records.
 
 ## Local development
@@ -89,16 +89,22 @@ npx wrangler deploy --config wrangler.staging.jsonc
 
 Record the returned staging URL and verify the deployment. **Production requires Carter's explicit approval**, a separate D1 database and R2 bucket, `DEV_AUTH=false`, and reviewed deployment settings. Never deploy `wrangler.jsonc` as a remote environment: it is a local configuration.
 
+## Create students from the dashboard
+
+Sign in as an owner or assigned instructor, open **Students**, and enter the student's name and email. **Create student account** creates a student-only account, enrolls it in the current section and records an audit event in one D1 transaction. Duplicate email addresses are rejected without changing the existing account. Owners can create accounts for any section; instructors can only use sections assigned to them.
+
+The generated initial passphrase is returned once and is not stored in plaintext or included in roster or audit responses. Save or copy the displayed login details and share them directly; the app does not send email. To test the student workspace while keeping your owner session, use a private browser window and log in with the new credentials. Refreshing the page or dismissing the credential card removes those displayed details.
+
 ## Database and security boundaries
 
-Two SQL migrations create users, sessions, login counters, sections, enrollments, accounts, assignments, answer keys, drafts, entries, lines, attempts and audit records, then seed 3 fictional exercises. They seed no remote users. Release defaults to locked. Passwords are PBKDF2-SHA256 (100,000 iterations, chosen to fit the Workers Web Crypto iteration limit); sessions last 8 hours. Rate limiting is 20 login requests per client IP per 15-minute window. School networks share IPs, so production needs a reviewed throttling policy. Account creation is an administrative CLI task for this beta. Password reset, session revocation UI, passphrase rotation, and roster management UI remain to be built.
+Two SQL migrations create users, sessions, login counters, sections, enrollments, accounts, assignments, answer keys, drafts, entries, lines, attempts and audit records, then seed 3 fictional exercises. They seed no remote users. Release defaults to locked. Passwords are PBKDF2-SHA256 (100,000 iterations, chosen to fit the Workers Web Crypto iteration limit); sessions last 8 hours. Rate limiting is 20 login requests per client IP per 15-minute window. School networks share IPs, so production needs a reviewed throttling policy. Student account creation is available in the instructor dashboard; initial owner/instructor provisioning remains an administrative CLI task. Password reset, session revocation UI, passphrase rotation, and roster management UI remain to be built.
 
 Only the authenticated student's posted lines feed their reports. Instructor queries require ownership of the section (or owner role). Students never receive answer keys. Submitted entry content and check feedback are visible to the assigned instructor. Posted records cannot be overwritten or deleted; an auditable reversal workflow is still needed before corrections can be offered.
 
 ## Deliberate remaining work
 
 - Verify Cloudflare staging build, migrations and deployment; provision instructor access.
-- Phase 2 assignment builder, accepted-answer editor, authenticated PDF/image uploads and R2 viewer, configurable points/attempts/grading/late rules, extensions and due-date editor, editable simulation weight, account lifecycle UI.
+- Phase 2 assignment builder, accepted-answer editor, authenticated PDF/image uploads and R2 viewer, configurable points/attempts/grading/late rules, extensions and due-date editor, editable simulation weight, account recovery and remaining lifecycle controls.
 - Institutional privacy, security and accessibility review before real student use; broader cross-section and assistive technology testing.
 - Semester-approved opening records and versioned weekly baselines to support missed work without duplication. Phase 1 uses a zero baseline and independent sample assignments only.
 - Financial statements, T-accounts, adjusting/closing and post-closing reports, accounting-period administration, auditable reversals.
