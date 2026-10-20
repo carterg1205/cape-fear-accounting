@@ -3,7 +3,7 @@ import {build} from 'esbuild';
 const bundled=await build({entryPoints:['worker/course-engine.ts'],bundle:true,write:false,platform:'node',format:'esm'});
 const {compileCourse}=await import('data:text/javascript;base64,'+Buffer.from(bundled.outputFiles[0].text).toString('base64'));
 const base='http://127.0.0.1:8787',cookies={};let checks=0;
-async function req(who,path,data,status=200){const r=await fetch(base+'/api/'+path,{method:data===undefined?'GET':'POST',headers:{Origin:base,Cookie:cookies[who]||'','Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)}),d=await r.json();assert.equal(r.status,status,path+': '+JSON.stringify(d));checks++;if(r.headers.get('set-cookie'))cookies[who]=r.headers.get('set-cookie').split(';')[0];return d;}
+async function req(who,path,data,status=200){const url=new URL('/api/'+path,base);if(!url.searchParams.has('section'))url.searchParams.set('section','acg201');const r=await fetch(url,{method:data===undefined?'GET':'POST',headers:{Origin:base,Cookie:cookies[who]||'','Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)}),d=await r.json();assert.equal(r.status,status,path+': '+JSON.stringify(d));checks++;if(r.headers.get('set-cookie'))cookies[who]=r.headers.get('set-cookie').split(';')[0];return d;}
 await req('i','login',{demo:'instructor'});await req('s','login',{demo:'student'});
 await req('s','classes',undefined,403);await req('s','classes',{name:'Forbidden class'},403);await req('i','classes',{name:'A'},400);
 const cls=await req('i','classes',{name:'Evening accounting'},201),scope='section='+cls.id;

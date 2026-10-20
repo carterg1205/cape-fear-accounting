@@ -132,3 +132,14 @@ describe('class switching',()=>{
   expect(screen.getByRole('button',{name:'Step 1: Second class task'})).toBeTruthy();
  });
 });
+
+
+describe('live assignment locks',()=>{
+ it('closes a statement safely when its instructor locks it while the student is working',async()=>{
+  let remote:any={...structuredClone(state),assignments:[{...structuredClone(state.assignments[0]),id:'statement',activity_type:'statement',activity_data:JSON.stringify({statement:{rowCount:1,labels:[{id:'Cash',name:'Cash'}],sections:['Assets'],titles:['Balance sheet']}})}]};
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url.includes('config')?{}:structuredClone(remote)})));
+  render(<App/>);await screen.findByText('Welcome back, Jamie.');fireEvent.click(screen.getByRole('button',{name:'Start this week’s unit'}));expect(screen.getByLabelText('Company name')).toBeTruthy();
+  remote.assignments[0]={...remote.assignments[0],unlocked:false,activity_data:undefined,document:undefined};fireEvent(window,new Event('focus'));
+  await screen.findByRole('button',{name:'View assignments'});expect(screen.queryByLabelText('Company name')).toBeNull();
+ });
+});

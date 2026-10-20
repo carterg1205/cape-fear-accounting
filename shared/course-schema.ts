@@ -14,7 +14,7 @@ export const courseParameters:CourseParam[]=[
  {key:'insurance',label:'Twelve-month insurance premium',kind:'money',unit:2,min:12000,max:240000,value:120000},
  {key:'supplies',label:'Supplies purchased on account',kind:'money',unit:2,min:10000,max:100000,value:30000},
  {key:'creditTours',label:'Tours billed on account',kind:'money',unit:2,min:10000,max:150000,value:80000},
- {key:'deposit',label:'Advance tour deposit',kind:'money',unit:3,min:20000,max:200000,value:90000},
+ {key:'deposit',label:'Advance tour deposit',kind:'money',unit:2,min:20000,max:200000,value:90000},
  {key:'earnedDepositPct',label:'Deposit earned (%)',kind:'rate',unit:3,min:1000,max:9000,value:5000},
  {key:'unbilled',label:'Completed tours not yet billed',kind:'money',unit:3,min:1000,max:100000,value:60000},
  {key:'accruedWages',label:'Unpaid wages at month end',kind:'money',unit:3,min:1000,max:100000,value:30000},
