@@ -1,3 +1,4 @@
+import {requireUnit} from './unit-access';
 import {reconcileBooks,correctionLedger} from './book-corrections';
 import {courseLedger} from './prepared-course';
 import {validate,financialStatements,type Account,type Line} from './accounting';
@@ -15,7 +16,8 @@ export async function classroom(c:Context):Promise<Response|null>{
   staff();const d=await body(req);if(typeof d.reportsUnlocked!=='boolean'||!Number.isInteger(d.weight)||d.weight<0||d.weight>100)fail('Choose report access and a course weight from 0 to 100.');
   const enabled=d.correctionEnabled===undefined?section.book_correction_enabled:d.correctionEnabled?1:0,delay=d.correctionDelayHours===undefined?section.book_correction_delay_hours:d.correctionDelayHours;
   if(d.correctionEnabled!==undefined&&typeof d.correctionEnabled!=='boolean'||!Number.isInteger(delay)||delay<0||delay>168)fail('Choose a correction delay from 0 to 168 whole hours.');
-  await env.DB.batch([sql('UPDATE sections SET reports_unlocked=?,weight=?,book_correction_enabled=?,book_correction_delay_hours=? WHERE id=?',d.reportsUnlocked?1:0,d.weight,enabled,delay,sectionId),audit('section.settings',sectionId,d)]);return json({ok:true});
+  if(d.requireUnitCompletion!==undefined&&typeof d.requireUnitCompletion!=='boolean')fail('Choose whether earlier units must be completed.');
+  await env.DB.batch([sql('UPDATE sections SET reports_unlocked=?,weight=?,book_correction_enabled=?,book_correction_delay_hours=?,require_unit_completion=? WHERE id=?',d.reportsUnlocked?1:0,d.weight,enabled,delay,d.requireUnitCompletion===undefined?section.require_unit_completion:d.requireUnitCompletion?1:0,sectionId),audit('section.settings',sectionId,d)]);return json({ok:true});
  }
  if(path==='/api/assignments/save'&&req.method==='POST'){
   staff();const d=await body(req),id=d.id||crypto.randomUUID();
@@ -77,7 +79,7 @@ export async function classroom(c:Context):Promise<Response|null>{
  }
  const file=path.match(/^\/api\/documents\/([a-zA-Z0-9-]+)$/);
  if(file&&req.method==='GET'){
-  const doc=await sql('SELECT d.*,a.published,a.release_mode,a.opens_at FROM documents d JOIN assignments a ON a.id=d.assignment_id WHERE d.id=? AND a.section_id=?',file[1],sectionId).first<any>();if(!doc)fail('Document not found.',404);if(!instructor&&!available(doc))fail('This assignment is locked.',403);
+  const doc=await sql('SELECT d.*,a.published,a.release_mode,a.opens_at,a.unit,a.course_version FROM documents d JOIN assignments a ON a.id=d.assignment_id WHERE d.id=? AND a.section_id=?',file[1],sectionId).first<any>();if(!doc)fail('Document not found.',404);if(!instructor&&!available(doc))fail('This assignment is locked.',403);await requireUnit(c,doc);
   const object=await env.DOCUMENTS.get(doc.object_key);if(!object)fail('Document not found.',404);
   return new Response(object!.body,{headers:{'Content-Type':doc.content_type,'Content-Length':String(doc.size),'Content-Disposition':`inline; filename*=UTF-8''${encodeURIComponent(doc.filename)}`,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; frame-ancestors 'self'"}});
  }
@@ -85,6 +87,7 @@ export async function classroom(c:Context):Promise<Response|null>{
   if(!instructor&&!section.reports_unlocked)fail('Your instructor has not unlocked financial statements.',403);
   const reportVersion=url.searchParams.get('version')||section.course_version,reportCourse=reportVersion&&reportVersion!=='legacy'?await sql('SELECT params,model_version FROM course_versions WHERE id=? AND section_id=?',reportVersion,sectionId).first<any>():null;
   if(!instructor&&reportCourse?.model_version>=2&&!await sql("SELECT id FROM assignments WHERE course_version=? AND unit=13 AND (first_released_at IS NOT NULL OR (published=1 AND (release_mode='open' OR (release_mode='scheduled' AND opens_at<=?)))) LIMIT 1",reportVersion,new Date().toISOString()).first())fail('Financial analysis opens in Unit 13. Prepare statements inside your weekly units first.',403);
+  if(!instructor&&reportCourse?.model_version>=2)await requireUnit(c,{unit:13,course_version:reportVersion});
   const studentId=url.searchParams.get('student')||user.id;if(studentId!==user.id&&(!instructor||!await sql("SELECT e.user_id FROM enrollments e JOIN users u ON u.id=e.user_id WHERE e.user_id=? AND e.section_id=? AND u.role='student'",studentId,sectionId).first()))fail('No access to this student record.',403);
   const lines=(await sql('SELECT l.*,e.date,a.cash_flow FROM lines l JOIN entries e ON e.id=l.entry_id JOIN assignments a ON a.id=e.assignment_id WHERE e.user_id=? AND a.section_id=? AND a.course_version IS NULL',studentId,sectionId).all<Line&{date:string;cash_flow:string}>()).results;
   const ledger=await courseLedger(c,studentId);if(ledger)return json({...financialStatements(accounts,ledger.lines as any),company:reportCourse?JSON.parse(reportCourse.params).company:undefined});await reconcileBooks(env.DB,{sectionId,studentId});const corrected=await correctionLedger(env.DB,studentId,sectionId,null);return json(financialStatements(accounts,[...lines,...corrected.lines] as any));

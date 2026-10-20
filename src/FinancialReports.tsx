@@ -2,7 +2,7 @@ import React,{useState,useEffect} from 'react';
 type Props={call:(p:string)=>Promise<any>;section:any;instructor:boolean;students:any[];assignments?:any[];statementCourse?:boolean};
 const money=(v:number)=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(v/100);
 export function FinancialReports({call,section,instructor,students,assignments=[],statementCourse=false}:Props){
- const [unit,setUnit]=useState(''),analysisReady=!statementCourse||assignments.some(a=>a.unit===13&&(a.unlocked||a.first_released_at));
+ const [unit,setUnit]=useState(''),analysisReady=!statementCourse||assignments.some(a=>a.unit===13&&!a.prerequisite_unit&&(a.unlocked||a.first_released_at));
  const [student,setStudent]=useState(''),[report,setReport]=useState<any>(null),[error,setError]=useState('');
  useEffect(()=>{let active=true;setReport(null);setError('');if(instructor&&!student)return;if(!instructor&&(!section.reports_unlocked||!analysisReady))return;const q=new URLSearchParams();if(student)q.set('student',student);if(unit)q.set('unit',unit);call('reports'+(q.size?'?'+q.toString():'')).then(r=>{if(active)setReport(r);}).catch(e=>{if(active)setError(e.message);});return ()=>{active=false;};},[student,unit,section.id,section.reports_unlocked,analysisReady]);
  const rows=(items:any[])=>items.map(([name,value])=><div className="report-row" key={name}><span>{name}</span><strong>{money(value)}</strong></div>);

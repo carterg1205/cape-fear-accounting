@@ -162,3 +162,12 @@ Journal accounts use a searchable combobox with name/code search, keyboard navig
 Checks identify incorrect line/account selections, wrong debit/credit direction, amount errors and missing accounts. Imbalances show the actual debit/credit totals and difference. Date, reference and memo problems are reported alongside accounting errors, using the existing yellow review feedback. Exact cents, split/compound-line equivalence and multiple accepted configurations remain supported.
 
 CI also runs `node scripts/transaction-integration.mjs` after the preceding local API suites.
+
+
+### Sequential unit prerequisites
+
+Completion prerequisites are enabled by default for every class. Professors may release or schedule several units together; each student can start a later unit only after correctly submitting every published required step in all earlier units of the same course. Correct answer checks, saved drafts and automatic book corrections do not count as submissions. Empty units and unpublished drafts do not block progression. Opening times, locks, deadlines and individual extensions remain independent requirements.
+
+Students see released later units and due dates with **Complete Unit N to begin**. Completing the final required step unlocks the next released unit on the normal progress refresh. Both UI and server enforce prerequisites, including journal/working-paper/statement drafts, checks and submissions, supporting files, analysis reports and supplied ledger records.
+
+**Settings → Individual unit prerequisite exceptions** lets an instructor waive an earlier unit requirement for one enrolled student, with a reason. Waiving Unit 1 allows Unit 2 to begin when released; Unit 2 must still be completed before Unit 3. Exceptions do not change grades, submissions or book corrections. They are audited, reversible and scoped to the class and current course version. A new course receives no earlier exceptions. **Settings → Unit progression** also offers a class-wide sequential-completion switch when a professor deliberately needs flexible order.

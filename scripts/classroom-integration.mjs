@@ -4,7 +4,7 @@ if(!['localhost','127.0.0.1'].includes(new URL(base).hostname))throw Error('Use 
 const cookies={};let checks=0;
 async function raw(who,path,data,status=200,extra={}){const r=await fetch(base+'/api/'+path,{method:data===undefined?'GET':'POST',headers:{Origin:base,Cookie:cookies[who]||'','Content-Type':'application/json',...extra},body:data===undefined?undefined:typeof data==='string'||data instanceof Uint8Array?data:JSON.stringify(data)});assert.equal(r.status,status,await r.clone().text());checks++;if(r.headers.get('set-cookie'))cookies[who]=r.headers.get('set-cookie').split(';')[0];return r;}
 const req=async(...args)=>(await raw(...args)).json();
-await req('i','login',{demo:'instructor'});await req('s','login',{demo:'student'});
+await req('i','login',{demo:'instructor'});await req('i','section/settings',{reportsUnlocked:false,weight:5,requireUnitCompletion:false});await req('s','login',{demo:'student'});
 await req('s','reports',undefined,403);
 const initial=await req('i','reports?student=local-student');assert.equal(initial.cash,2045000);assert.equal(initial.revenue,45000);assert.equal(initial.liabilities,380000);assert.equal(initial.equationDifference,0);assert.equal(initial.cashFlows.financing,2000000);
 await req('s','section/settings',{weight:7,reportsUnlocked:true},403);await req('i','section/settings',{weight:7,reportsUnlocked:true});

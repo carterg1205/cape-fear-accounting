@@ -1,0 +1,20 @@
+import type {Context} from './classroom';
+export type UnitAccess={blocked:Record<number,number>;waived:number[]};
+export function unitPrerequisites(assignments:{unit:number;completed:boolean}[],waived:number[]=[]):UnitAccess{
+ const required=new Map<number,boolean>();for(const a of assignments)required.set(a.unit,(required.get(a.unit)??true)&&a.completed);
+ const blocked:Record<number,number>={};let firstMissing=0;for(let unit=1;unit<=13;unit++){if(firstMissing)blocked[unit]=firstMissing;if(required.has(unit)&&!required.get(unit)&&!waived.includes(unit)&&!firstMissing)firstMissing=unit;}return {blocked,waived};
+}
+const cache=new WeakMap<Context,Map<string,Promise<UnitAccess>>>();
+export async function unitAccess(c:Context,version:string|null|undefined,studentId=c.user.id):Promise<UnitAccess>{
+ if(c.section.require_unit_completion===0)return {blocked:{},waived:[]};const key=version&&version!=='legacy'?version:'legacy';let map=cache.get(c);if(!map){map=new Map();cache.set(c,map);}const cacheKey=studentId+':'+key;if(!map.has(cacheKey))map.set(cacheKey,(async()=>{
+  const rows=(await c.sql('SELECT a.unit,EXISTS(SELECT 1 FROM student_submissions s WHERE s.assignment_id=a.id AND s.user_id=?) AS completed FROM assignments a WHERE a.section_id=? AND a.course_version IS ? AND a.published=1',studentId,c.sectionId,key==='legacy'?null:key).all<any>()).results;
+  const waivers=(await c.sql('SELECT unit FROM unit_prerequisite_waivers WHERE section_id=? AND user_id=? AND course_key=?',c.sectionId,studentId,key).all<{unit:number}>()).results;
+  return unitPrerequisites(rows.map(r=>({unit:r.unit,completed:!!r.completed})),waivers.map(r=>r.unit));
+ })());return map.get(cacheKey)!;
+}
+export async function requireUnit(c:Context,a:{unit:number;course_version?:string|null}){if(c.instructor)return;const prior=(await unitAccess(c,a.course_version)).blocked[a.unit];if(prior)c.fail(`Complete Unit ${prior} to begin Unit ${a.unit}. Your instructor can grant a prerequisite exception.`,403);}
+export async function prerequisiteRoutes(c:Context){const {req,url,instructor,sectionId,section,user,sql,env,body,fail,json}=c;if(url.pathname!=='/api/unit-prerequisites')return null;if(!instructor)fail('Instructor access required.',403);const key=section.course_version||'legacy';
+ if(req.method==='GET')return json({waivers:(await sql('SELECT user_id,unit,reason,created_at FROM unit_prerequisite_waivers WHERE section_id=? AND course_key=? ORDER BY unit,user_id',sectionId,key).all()).results});
+ if(req.method==='POST'){const d=await body(req);if(!Number.isInteger(d.unit)||d.unit<1||d.unit>13||typeof d.waived!=='boolean')fail('Select a unit and prerequisite action.');if(!await sql("SELECT en.user_id FROM enrollments en JOIN users u ON u.id=en.user_id WHERE en.section_id=? AND en.user_id=? AND u.role='student' AND u.active=1",sectionId,d.studentId).first())fail('Select a student enrolled in this class.',404);if(d.waived&&!await sql('SELECT id FROM assignments WHERE section_id=? AND course_version IS ? AND unit=? AND published=1 LIMIT 1',sectionId,key==='legacy'?null:key,d.unit).first())fail('This unit has no required assignments in the current course.',404);const reason=typeof d.reason==='string'?d.reason.trim():'';if(d.waived&&(!reason||reason.length>300))fail('Enter a reason of up to 300 characters.');
+ await env.DB.batch([d.waived?sql("INSERT INTO unit_prerequisite_waivers(section_id,user_id,course_key,unit,reason,created_by) VALUES(?,?,?,?,?,?) ON CONFLICT(section_id,user_id,course_key,unit) DO UPDATE SET reason=excluded.reason,created_by=excluded.created_by,created_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')",sectionId,d.studentId,key,d.unit,reason,user.id):sql('DELETE FROM unit_prerequisite_waivers WHERE section_id=? AND user_id=? AND course_key=? AND unit=?',sectionId,d.studentId,key,d.unit),sql('INSERT INTO audit(id,actor,action,target,details) VALUES(?,?,?,?,?)',crypto.randomUUID(),user.id,d.waived?'unit.prerequisite.waive':'unit.prerequisite.restore',sectionId,JSON.stringify({studentId:d.studentId,course:key,unit:d.unit,reason}))]);return json({ok:true});}return null;
+}

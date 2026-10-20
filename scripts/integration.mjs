@@ -14,7 +14,7 @@ try{const sql=execFileSync(process.execPath,['scripts/provision-user.mjs',testEm
 const clients={student:'',instructor:'',second:''};let checks=0;
 async function request(who,path,data,status=200){const r=await fetch(base+'/api/'+path,{method:data===undefined?'GET':'POST',headers:{Origin:base,'Content-Type':'application/json',Cookie:clients[who]||''},body:data===undefined?undefined:JSON.stringify(data)});const d=await r.json();assert.equal(r.status,status,JSON.stringify(d));checks++;if(r.headers.get('set-cookie'))clients[who]=r.headers.get('set-cookie').split(';')[0];return d;}
 await request('student','state',undefined,401);
-await request('instructor','login',{demo:'instructor'});
+await request('instructor','login',{demo:'instructor'});await request('instructor','section/settings',{reportsUnlocked:false,weight:5,requireUnitCompletion:false});
 await request('student','login',{demo:'student'});
 let s=await request('student','state');assert.equal(s.entries.length,0,'Use a fresh local D1 database for this test.');
 assert.equal(s.assignments[0].document,undefined);

@@ -30,3 +30,4 @@ jobs:
           node scripts/correction-integration.mjs
           node scripts/transaction-integration.mjs
           node scripts/statement-integration.mjs
+          node scripts/prerequisite-integration.mjs

@@ -1,3 +1,4 @@
+import {unitAccess} from './unit-access';
 import {checkStatement} from './statement-engine';
 import {reconcileBooks,correctionLedger} from './book-corrections';
 import type {Context} from './classroom';
@@ -60,11 +61,12 @@ export async function courseLedger(c:Context,studentId:string){
  const version=c.url.searchParams.get('version')||c.section.course_version||null;
  if(version==='legacy'||!version)return null;
  const v=await c.sql('SELECT * FROM course_versions WHERE id=? AND section_id=?',version,c.sectionId).first<any>();if(!v)c.fail('Course edition not found.',404);
- const released=(await c.sql("SELECT unit FROM assignments WHERE course_version=? AND (first_released_at IS NOT NULL OR (published=1 AND (release_mode='open' OR (release_mode='scheduled' AND opens_at<=?)))) ORDER BY unit DESC LIMIT 1",version,new Date().toISOString()).first<any>())?.unit||1;
- const unit=Number(c.url.searchParams.get('unit')||released);if(!Number.isInteger(unit)||unit<1||unit>13)c.fail('Invalid unit.');
- if(!c.instructor&&unit>released)c.fail('This unit has not been released.',403);
  const assignments=(await c.sql("SELECT unit,published,release_mode,opens_at,first_released_at FROM assignments WHERE course_version=?",version).all<any>()).results;
- const visibleUnits=new Set(assignments.filter(a=>a.first_released_at||a.published===1&&(a.release_mode==='open'||a.release_mode==='scheduled'&&Date.parse(a.opens_at)<=Date.now())).map(a=>a.unit));
+ const access=c.instructor?{blocked:{} as Record<number,number>}:await unitAccess(c,version,studentId);
+ const visibleUnits=new Set(assignments.filter(a=>!access.blocked[a.unit]&&(a.first_released_at||a.published===1&&(a.release_mode==='open'||a.release_mode==='scheduled'&&Date.parse(a.opens_at)<=Date.now()))).map(a=>a.unit));
+ const released=Math.max(1,...visibleUnits),unit=Number(c.url.searchParams.get('unit')||released);if(!Number.isInteger(unit)||unit<1||unit>13)c.fail('Invalid unit.');
+ if(!c.instructor&&access.blocked[unit])c.fail(`Complete Unit ${access.blocked[unit]} to begin Unit ${unit}.`,403);
+ if(!c.instructor&&unit>released)c.fail('This unit has not been released.',403);
  // Opening records (deposits, patent and dividend payment) are supplied business transactions,
  // not replacements for students' earlier assignments. Prior-unit answers wait for correction time.
  const course=compileCourse(JSON.parse(v.params),Number(v.model_version)||1);

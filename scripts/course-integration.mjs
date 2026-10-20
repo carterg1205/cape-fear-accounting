@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 const base='http://127.0.0.1:8787',cookies={};let checks=0;
 async function req(who,path,data,status=200){const r=await fetch(base+'/api/'+path,{method:data===undefined?'GET':'POST',headers:{Origin:base,Cookie:cookies[who]||'','Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});const d=await r.json();assert.equal(r.status,status,JSON.stringify(d));checks++;if(r.headers.get('set-cookie'))cookies[who]=r.headers.get('set-cookie').split(';')[0];return d;}
-await req('i','login',{demo:'instructor'});await req('s','login',{demo:'student'});
+await req('i','login',{demo:'instructor'});await req('i','section/settings',{reportsUnlocked:false,weight:5,requireUnitCompletion:false});await req('s','login',{demo:'student'});
 await req('s','course',undefined,403);const preview=await req('i','course');assert.equal(preview.preview.length,43);
 await req('i','course/save',{modelVersion:1,params:{soldQty:15},name:'bad'},400);
 let course=await req('i','course/save',{modelVersion:1,params:{},name:'Complete course'});const id=course.id;

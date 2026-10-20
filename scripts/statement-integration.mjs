@@ -4,13 +4,14 @@ const bundled=await build({entryPoints:['worker/course-engine.ts'],bundle:true,w
 const {compileCourse}=await import('data:text/javascript;base64,'+Buffer.from(bundled.outputFiles[0].text).toString('base64'));
 const base='http://127.0.0.1:8787',cookies={};let checks=0;
 async function req(who,path,data,status=200){const url=new URL('/api/'+path,base);if(!url.searchParams.has('section'))url.searchParams.set('section','acg201');const r=await fetch(url,{method:data===undefined?'GET':'POST',headers:{Origin:base,Cookie:cookies[who]||'','Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)}),d=await r.json();assert.equal(r.status,status,path+': '+JSON.stringify(d));checks++;if(r.headers.get('set-cookie'))cookies[who]=r.headers.get('set-cookie').split(';')[0];return d;}
-await req('i','login',{demo:'instructor'});await req('s','login',{demo:'student'});
+await req('i','login',{demo:'instructor'});await req('i','section/settings',{reportsUnlocked:false,weight:5,requireUnitCompletion:false});await req('s','login',{demo:'student'});
 await req('s','classes',undefined,403);await req('s','classes',{name:'Forbidden class'},403);await req('i','classes',{name:'A'},400);
 const cls=await req('i','classes',{name:'Evening accounting'},201),scope='section='+cls.id;
 assert.equal((await req('i','classes')).classes.some(s=>s.id===cls.id),true);await req('s','state?'+scope,undefined,403);
 assert.equal((await req('i','classes/students?'+scope+'&q=Jamie')).students.some(s=>s.id==='local-student'),true);
 await req('i','classes/enroll?'+scope,{studentId:'not-a-student'},404);await req('i','classes/enroll?'+scope,{studentId:'local-student'});await req('i','classes/enroll?'+scope,{studentId:'local-student'});
 assert.equal((await req('s','state?'+scope)).sections.some(s=>s.id===cls.id),true);await req('s','classes/students?'+scope,undefined,403);
+await req('i','section/settings?'+scope,{reportsUnlocked:false,weight:5,requireUnitCompletion:false});
 const saved=await req('i','course/save?'+scope,{name:'Statement course',params:{}});assert.equal(saved.activities,43);assert.equal(saved.modelVersion,2);
 let state=await req('i','state?'+scope);assert.equal(state.assignments.length,43);assert.equal(state.courseModelVersion,2);assert.equal((await req('i','state')).section.id,'acg201');assert.equal((await req('i','state')).assignments.length,26);
 const compiled=compileCourse({},2),assignment=key=>state.assignments.find(a=>a.template_key===key),payload=key=>{const a=compiled.activities.find(a=>a.key===key),s=a.accepted.statement;return {revision:1,reference:a.reference,statement:{company:s.company,title:s.title,basis:s.basis,date:s.date,rows:s.rows.map(r=>({label:r.label,section:r.section,amount:(r.amount/100).toFixed(2)}))}};};

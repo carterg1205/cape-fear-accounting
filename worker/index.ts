@@ -1,3 +1,4 @@
+import {unitAccess,requireUnit,prerequisiteRoutes} from './unit-access';
 import {classRoot,classEnrollment,unitSchedule} from './classes';
 import {transactionPresentation,limitedAccounts} from './transaction-presentation';
 import {reconcileBooks,correctionLedger,correctionTime} from './book-corrections';
@@ -53,6 +54,8 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
   const instructor=user.role==='owner'||(user.role==='instructor'&&section?.instructor_id===user.id);
   const accounts=(await sql('SELECT * FROM accounts ORDER BY id').all<Account>()).results;
   const ctx={req,url,env,user,sectionId,section,sections,instructor,accounts,sql,body,fail,json};
+  const prerequisiteResponse=await prerequisiteRoutes(ctx);if(prerequisiteResponse)return prerequisiteResponse;
+  const submissionPath=path.match(/^\/api\/assignments\/([a-zA-Z0-9-]+)\/(draft|check|post)$/);if(!instructor&&submissionPath&&req.method==='POST'){const target=await sql('SELECT unit,course_version FROM assignments WHERE id=? AND section_id=?',submissionPath[1],sectionId).first<any>();if(target)await requireUnit(ctx,target);}
   const classResponse=await classEnrollment(ctx)||await unitSchedule(ctx);if(classResponse)return classResponse;
   const preparedResponse=await preparedCourse(ctx);if(preparedResponse)return preparedResponse;
   const classroomResponse=await classroom({req,url,env,user,sectionId,section,sections,instructor,accounts,sql,body,fail,json});if(classroomResponse)return classroomResponse;
@@ -79,8 +82,9 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
   if(path==='/api/state'&&req.method==='GET'){
    const chosenVersion=url.searchParams.get('version')||section?.course_version||'legacy';
    const presentationVersion=chosenVersion==='legacy'?null:await sql('SELECT params,model_version FROM course_versions WHERE id=? AND section_id=?',chosenVersion,sectionId).first<any>();const presentationParams=presentationVersion?JSON.parse(presentationVersion.params):undefined;
+   const access=instructor?{blocked:{} as Record<number,number>,waived:[] as number[]}:await unitAccess(ctx,String(chosenVersion));
    const assignments=(await sql('SELECT k.accepted AS private_key,a.*,COALESCE(x.due_at,a.due_at) AS effective_due_at,e.id AS entry_id,e.created_at AS submitted_at,(SELECT COUNT(*) FROM attempts t WHERE t.user_id=? AND t.assignment_id=a.id) AS attempts FROM assignments a LEFT JOIN answer_keys k ON k.assignment_id=a.id LEFT JOIN student_submissions e ON e.assignment_id=a.id AND e.user_id=? LEFT JOIN extensions x ON x.assignment_id=a.id AND x.user_id=? WHERE a.section_id=? AND (a.published=1 OR ?=1) AND ((?=\'legacy\' AND a.course_version IS NULL) OR a.course_version=?) ORDER BY a.unit,a.sort_order,a.transaction_date',user.id,user.id,user.id,sectionId,instructor?1:0,chosenVersion,chosenVersion).all()).results.map((a:any)=>{
-    const unlocked=open(a);const safe={...a,unlocked,correction_at:section?.book_correction_enabled?correctionTime(a.effective_due_at,Number(section.book_correction_delay_hours)):null};delete safe.explanation;delete safe.expected_reference;delete safe.cash_flow;delete safe.private_key;if(instructor||unlocked){Object.assign(safe,transactionPresentation(a,presentationParams));safe.account_choices=limitedAccounts(a.unit,accounts,JSON.parse(a.private_key||'[]'));}
+    const prerequisite_unit=access.blocked[a.unit]||null,released=open(a),unlocked=released&&!prerequisite_unit;const safe={...a,released,prerequisite_unit,prerequisite_waived:access.waived.includes(a.unit),unlocked,correction_at:section?.book_correction_enabled?correctionTime(a.effective_due_at,Number(section.book_correction_delay_hours)):null};delete safe.explanation;delete safe.expected_reference;delete safe.cash_flow;delete safe.private_key;if(instructor||unlocked){Object.assign(safe,transactionPresentation(a,presentationParams));safe.account_choices=limitedAccounts(a.unit,accounts,JSON.parse(a.private_key||'[]'));}
     if(!instructor&&!unlocked){delete safe.document;delete safe.instructions;delete safe.activity_data;}if(a.entry_id)safe.explanation=a.explanation;return safe;
    });
    const attached=(await sql('SELECT d.id,d.assignment_id,d.filename,d.content_type,d.size FROM documents d JOIN assignments a ON a.id=d.assignment_id WHERE a.section_id=?',sectionId).all()).results;
