@@ -51,4 +51,4 @@ export const defaultCourseParams=()=>Object.fromEntries(courseParameters.map(p=>
 export type ActivityField={id:string;label:string;kind:'money'|'integer'|'ratio'|'percent'|'choice';options?:{value:string;label:string}[]};
 export type ActivityData={kind:'journal'|'analysis'|'inventory'|'reconciliation'|'classification'|'ratios'|'statements'|'statement';statement?:StatementSpec;intro:string;fields:ActivityField[];table?:{headers:string[];rows:(string|number)[][]};lesson:{title:string;intro:string;concepts:string[];example:{story:string;steps:string[]}}};
 export type StatementSpec={company:string;reportDate:string;periodStart:string;rowCount:number;sections:string[];labels:{id:string;name:string}[];titles:string[];sourceNote:string};
-export type StatementAnswer={company:string;title:string;basis:string;date:string;rows:{label:string;section:string;amount:string}[]};
+export type StatementAnswer={company:string;title:string;basis:string;date:string;rows:{label:string;section:string;amount:string;style?:'detail'|'subtotal'|'total'}[]};
