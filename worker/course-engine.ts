@@ -1,3 +1,4 @@
+import {appendStatementActivities} from './statement-engine';
 import {formatBusinessMoney} from '../src/business-format';
 import {courseParameters,defaultCourseParams,type ActivityData,type ActivityField} from '../shared/course-schema';
 import {courseUnits} from '../src/course';
@@ -9,7 +10,7 @@ export function validateParams(input:any){
  const n=(k:string)=>Number(p[k]);if(n('soldQty')>n('boardQty'))throw Error('Boards sold cannot exceed boards purchased.');if(n('writeoff')>n('badDebt')||n('writeoff')>n('unbilled')+n('soldQty')*n('boardPrice'))throw Error('The write-off must fit the allowance and receivables.');if(n('residual')>=n('newEquipment')+n('delivery')+n('installation'))throw Error('Residual value must be less than equipment cost.');if(n('withheld')>=n('grossPay'))throw Error('Withholding must be less than gross pay.');if(n('issuePrice')<n('par'))throw Error('Issue price cannot be below par.');return p;
 }
 export type RecordRow={unit:number;date:string;memo:string;reference:string;cash_flow:string;lines:Line[];activityKey?:string};
-export function compileCourse(input:any){
+export function compileCourse(input:any,modelVersion=1){
  const p=validateParams(input),n=(k:string)=>Number(p[k]),s=(k:string)=>String(p[k]),money=(v:number)=>formatBusinessMoney(v/100),round=Math.round;
  const records:RecordRow[]=[],activities:any[]=[],snapshots:any[]=[];
  const d=(a:string,v:number):Line=>({account:a,debit:v,credit:0}),c=(a:string,v:number):Line=>({account:a,debit:0,credit:v});
@@ -21,8 +22,8 @@ export function compileCourse(input:any){
   const guide=courseUnits[u-1],journal=Array.isArray(answer),kind=journal?'journal':u===5?'inventory':u===6?'reconciliation':u===12?'classification':u===13?'ratios':u===1?'analysis':'statements';
   const activity:ActivityData={kind,intro,fields:journal?[]:answer.fields,table,lesson:{title:guide.title,intro:`${s('manager')} is growing ${s('company')}, a coastal shop in Wilmington. ${guide.builds}`,concepts:[guide.focus,guide.limits],example:examples[u-1]}};
   const lines=journal?answer:[],total=journal?lines.reduce((v,l)=>v+l.debit,0):0;
-  activities.push({key,unit:u,title,intro,date:date(u,key.endsWith('b')?25:15),reference:`CFO-U${String(u).padStart(2,'0')}-${key.endsWith('b')?'B':'A'}`,detail,activity,accepted:journal?[lines.filter(l=>l.debit||l.credit)]:{fields:answer.expected},flow:journal&&lines.filter(l=>l.account==='1010').reduce((v,l)=>v+l.debit-l.credit,0)===0?'none':flow,total:key==='u4b'?n('soldQty')*n('boardPrice'):key==='u9b'?n('grossPay'):total});
-  if(journal)addRecord(u,title,lines,flow,key.endsWith('b')?25:15,key);
+  activities.push({key,unit:u,title,intro,date:date(u,({'u2c':26,'u2d':27,'u2e':28,'u3c':27} as Record<string,number>)[key]||(key.endsWith('b')?25:15)),reference:`CFO-U${String(u).padStart(2,'0')}-${key.replace(/^u\d+/, '').toUpperCase()}`,detail,activity,accepted:journal?[lines.filter(l=>l.debit||l.credit)]:{fields:answer.expected},flow:journal&&lines.filter(l=>l.account==='1010').reduce((v,l)=>v+l.debit-l.credit,0)===0?'none':flow,total:key==='u4b'?n('soldQty')*n('boardPrice'):key==='u9b'?n('grossPay'):total});
+  if(journal)addRecord(u,title,lines,flow,({'u2c':26,'u2d':27,'u2e':28,'u3c':27} as Record<string,number>)[key]||(key.endsWith('b')?25:15),key);
  };
  const snapshot=(u:number)=>snapshots.push({unit:u,records:structuredClone(records)});
  snapshot(1);
@@ -33,10 +34,16 @@ export function compileCourse(input:any){
  snapshot(2);
  add(2,'u2a','Outfitting the shop',`${s('manager')} purchases rental equipment for ${money(n('equipment'))}, paying cash to ${s('vendor')}.`,'Record the equipment acquisition; it will be used over six years with no residual value.',[d('1500',n('equipment')),c('1010',n('equipment'))],'investing');
  add(2,'u2b','Protecting the business',`${s('manager')} pays ${money(n('insurance'))} cash for a twelve-month insurance policy. Coverage starts next month.`,'Record the initial payment as an asset, not an immediate expense.',[d('1300',n('insurance')),c('1010',n('insurance'))],'operating');
- addRecord(3,'Advance tour booking deposit',[d('1010',n('deposit')),c('2100',n('deposit'))],'operating',1);snapshot(3);
+ if(modelVersion>=2){
+ add(2,'u2c','Supplies for the season',`${s('manager')} receives ${money(n('supplies'))} of shop supplies on account from ${s('vendor')}. Payment is due in 30 days.`,'Record supplies as an asset. None have been used yet.',[d('1400',n('supplies')),c('2010',n('supplies'))]);
+ add(2,'u2d','Tours completed on account',`${s('manager')} completes ${money(n('creditTours'))} of tours for ${s('customer')} and sends an invoice. No cash has been collected.`,'Record the earned service revenue and the amount due from the customer.',[d('1100',n('creditTours')),c('4100',n('creditTours'))]);
+ add(2,'u2e','Bookings for next month',`${s('manager')} receives ${money(n('deposit'))} cash for tours that will take place next month.`,'Record the advance receipt before any service has been provided.',[d('1010',n('deposit')),c('2100',n('deposit'))],'operating');
+ }else addRecord(3,'Advance tour booking deposit',[d('1010',n('deposit')),c('2100',n('deposit'))],'operating',1);
+ snapshot(3);
  const insurance=round(n('insurance')/12),earned=round(n('deposit')*n('earnedDepositPct')/10000);
  add(3,'u3a','Time to adjust',`${s('manager')} reviews month end. One month of insurance has expired. The shop has earned ${n('earnedDepositPct')/100}% of the ${money(n('deposit'))} tour deposit received earlier.`,'Prepare both adjusting entries. Original premium: '+money(n('insurance'))+'.', [d('5200',insurance),c('1300',insurance),d('2100',earned),c('4100',earned)]);
  add(3,'u3b','Work earned, bills to follow',`${s('manager')} reports ${money(n('unbilled'))} in completed, unbilled tours and ${money(n('accruedWages'))} unpaid wages. Initial equipment needs one month of straight-line depreciation.`,'Initial equipment cost '+money(n('equipment'))+'; six-year life; zero residual. Round each adjustment to cents.',[d('1100',n('unbilled')),c('4100',n('unbilled')),d('5500',n('accruedWages')),c('2030',n('accruedWages')),d('5300',round(n('equipment')/72)),c('1510',round(n('equipment')/72))]);
+ if(modelVersion>=2)add(3,'u3c','Count the supplies',`${s('manager')} counts supplies at month end. The original purchase was ${money(n('supplies'))}; ${money(n('supplies')-round(n('supplies')/2))} remains on hand.`,'Prepare the adjusting entry for supplies used.',[d('5920',round(n('supplies')/2)),c('1400',round(n('supplies')/2))]);
  snapshot(4);
  add(4,'u4a','Surfboards arrive',`${s('manager')} ordered ${n('boardQty')} surfboards for the shop from ${s('vendor')} at ${money(n('boardCost'))} each. They arrive today; payment is due in 30 days.`,'Use perpetual inventory. No freight, discounts or returns.',[d('1200',n('boardQty')*n('boardCost')),c('2010',n('boardQty')*n('boardCost'))]);
  add(4,'u4b','A customer catches a wave',`${s('customer')} buys ${n('soldQty')} of those surfboards on account for ${money(n('boardPrice'))} each. Each cost the shop ${money(n('boardCost'))}.`,'Record both the credit sale and the perpetual cost-of-goods-sold entry.',[d('1100',n('soldQty')*n('boardPrice')),c('4010',n('soldQty')*n('boardPrice')),d('5010',n('soldQty')*n('boardCost')),c('1200',n('soldQty')*n('boardCost'))]);
@@ -79,7 +86,10 @@ export function compileCourse(input:any){
  add(13,'u13a','Read the business signals',`${s('manager')} wants to understand liquidity, profitability and solvency from the company’s selected records.`,'Round ratios and percentages to two decimals. Enter a percent as 12.34, not 0.1234.',fields([['current','Current ratio (times)','ratio',round(current/currentLiab*100)],['margin','Profit margin (%)','percent',round(income/revenue*10000)],['debt','Debt ratio (%)','percent',round(liabilities/assets*10000)]]),'none',statementTable);
  const priorRecords=records.filter(r=>r.unit<8),priorRevenue=-priorRecords.flatMap(r=>r.lines).filter(l=>l.account.startsWith('4')).reduce((v,l)=>v+l.debit-l.credit,0),priorCash=priorRecords.flatMap(r=>r.lines).filter(l=>l.account==='1010').reduce((v,l)=>v+l.debit-l.credit,0);
  add(13,'u13b','Tell the growth story',`${s('manager')} compares the cumulative checkpoint before Unit 8 with the final selected-record statements.`,'Prior cumulative revenue '+money(priorRevenue)+'; prior cash '+money(priorCash)+'. This is a cumulative classroom checkpoint comparison, not equal-length annual periods.',fields([['growth','Revenue increase (%)','percent',round((revenue-priorRevenue)/priorRevenue*10000)],['cashChange','Cash change ($)','money',cash-priorCash],['inventory','Inventory as a percentage of total assets (%)','percent',round(net('1200')/assets*10000)]]),'none',statementTable);
- return {params:p,activities,snapshots,records};
+ if(modelVersion>=2)appendStatementActivities({params:p,activities,records,date});
+ const order:Record<number,string[]>={1:['u1a','u1b','u1is','u1re','u1bs','u1cf'],2:['u2a','u2b','u2c','u2d','u2e','u2tb'],3:['u3a','u3b','u3c','u3is','u3re','u3bs'],4:['u4a','u4b','u4single','u4multi'],11:['u11a','u11b','u11re','u11eq'],12:['u12a','u12b','u12cf']};
+ activities.sort((a,b)=>a.unit-b.unit||(order[a.unit]?.indexOf(a.key)??0)-(order[b.unit]?.indexOf(b.key)??0));for(const u of courseUnits)activities.filter(a=>a.unit===u.unit).forEach((a,i)=>a.order=i+1);
+ return {params:p,activities,snapshots,records,modelVersion};
 }
 const examples=[
  {story:'A kayak business starts with $8,000 of owner investment and earns $600 after $200 expenses.',steps:['Investment increases assets and equity by $8,000; it is not revenue.','Net income is $400. With no dividends, ending retained earnings is $400.','Income statement → retained earnings statement → balance sheet; cash flows explains the cash change.']},

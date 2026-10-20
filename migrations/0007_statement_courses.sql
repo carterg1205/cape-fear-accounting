@@ -1,0 +1,1 @@
+ALTER TABLE course_versions ADD COLUMN model_version INTEGER NOT NULL DEFAULT 1;

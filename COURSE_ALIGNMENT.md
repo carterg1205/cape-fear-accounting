@@ -1,13 +1,13 @@
 # ACG 201 assignment progression
 
-This guide follows the instructor-provided ACG 201 Topics for Fall 2026 outline for Wild's Financial Accounting. The Course Plan screen and assignment builder contain the same topic boundaries. Plan approximately one or two 5–15 minute activities per unit; unit numbers represent chapters, not fixed calendar dates. The instructor sets the actual section release schedule.
+This guide follows the instructor-provided ACG 201 Topics for Fall 2026 outline for Wild's Financial Accounting. The Course Plan screen and assignment builder contain the same topic boundaries. The expanded prepared course contains 43 steps across 13 units; unit numbers represent chapters, not fixed calendar dates. The instructor sets the actual section release schedule.
 
 Use one fictional corporation throughout. Introduce the source document and the business decision first; students interpret and record the work manually. Revisit earlier records when adding a new concept. For example, purchase equipment and prepay insurance in the accounting-system unit before adjusting their expense amounts later; sell inventory after introducing its purchase and cost flow. Later cash-flow and ratio activities should use the same approved records.
 
 | Unit | New emphasis | Connection to earlier work |
 | --- | --- | --- |
 | 1 | Accounting equation, transaction analysis, statement relationships and users | Establish the business and explain assets, liabilities and equity before formal journal entry requirements. |
-| 2 | Journal, ledger, normal balances, T-accounts and trial balance | Record the founding and operating events analyzed in Unit 1. Introduce basic ratios briefly. |
+| 2 | Journal, ledger, normal balances, T-accounts and trial balance | Record equipment, prepaid insurance, supplies, tours on account and customer advances; prepare a trial balance for Unit 3. |
 | 3 | Deferrals, accruals, depreciation, adjusted statements and closing | Adjust equipment, prepaid insurance and service deposits introduced earlier; distinguish temporary and permanent accounts. |
 | 4 | Perpetual purchases/sales and COGS, single-step/multi-step statements | Extend the recording cycle to the outfitter's retail activity. No discounts or returns. |
 | 5 | Periodic FIFO, LIFO, weighted average and specific identification | Use the cost-flow equation and stock records from Unit 4. Compare inventory/COGS effects. |
@@ -22,7 +22,7 @@ Use one fictional corporation throughout. Introduce the source document and the 
 
 ## Implementation boundaries
 
-Phase 2 provides instructor-authored journal-entry activities, source documents, multiple accepted answers, student preview, scheduling, extensions, progress, grades, and financial report views. It does not claim that all thirteen weeks of exercises are already built. The full course template set and calculation, reconciliation, ratio and statement-preparation exercise components belong to Phase 3. The original three beta exercises and any existing student submissions are retained.
+The expanded course provides all 13 units with prepared lessons, examples and 43 assignments. Thirteen statement assignments require manual headings, account/line selection, classification, amounts and totals: four statements in Unit 1; trial balance in Unit 2; adjusted income, retained earnings and classified balance sheet in Unit 3; single-step and multi-step income statements in Unit 4; retained earnings and stockholders’ equity in Unit 11; and a complete cash-flow statement in Unit 12. Unit 13 uses completed reports for analysis. Statement rows do not create journal entries. Supplied balances are cumulative from incorporation unless the question specifies the Unit 11 period. The earlier 26-activity course remains versioned as model 1; existing student work and original beta exercises are preserved.
 
 Financial reports currently summarize all posted entries since incorporation from the zero opening baseline. They are report views, not auto-completed student answers. Cash-flow classification is supplied by the instructor for each exercise; use separate exercises for mixed activity cash transactions. Period-filtered, classified and closing-aware report workflows remain future accounting-cycle work.
 

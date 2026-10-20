@@ -12,6 +12,8 @@ export const courseParameters:CourseParam[]=[
  {key:'openingRent',label:'Opening shop rent',kind:'money',unit:1,min:1000,max:100000,value:40000},
  {key:'equipment',label:'Initial equipment cost',kind:'money',unit:2,min:60000,max:500000,value:240000},
  {key:'insurance',label:'Twelve-month insurance premium',kind:'money',unit:2,min:12000,max:240000,value:120000},
+ {key:'supplies',label:'Supplies purchased on account',kind:'money',unit:2,min:10000,max:100000,value:30000},
+ {key:'creditTours',label:'Tours billed on account',kind:'money',unit:2,min:10000,max:150000,value:80000},
  {key:'deposit',label:'Advance tour deposit',kind:'money',unit:3,min:20000,max:200000,value:90000},
  {key:'earnedDepositPct',label:'Deposit earned (%)',kind:'rate',unit:3,min:1000,max:9000,value:5000},
  {key:'unbilled',label:'Completed tours not yet billed',kind:'money',unit:3,min:1000,max:100000,value:60000},
@@ -47,4 +49,6 @@ export const courseParameters:CourseParam[]=[
 ];
 export const defaultCourseParams=()=>Object.fromEntries(courseParameters.map(p=>[p.key,p.value]));
 export type ActivityField={id:string;label:string;kind:'money'|'integer'|'ratio'|'percent'|'choice';options?:{value:string;label:string}[]};
-export type ActivityData={kind:'journal'|'analysis'|'inventory'|'reconciliation'|'classification'|'ratios'|'statements';intro:string;fields:ActivityField[];table?:{headers:string[];rows:(string|number)[][]};lesson:{title:string;intro:string;concepts:string[];example:{story:string;steps:string[]}}};
+export type ActivityData={kind:'journal'|'analysis'|'inventory'|'reconciliation'|'classification'|'ratios'|'statements'|'statement';statement?:StatementSpec;intro:string;fields:ActivityField[];table?:{headers:string[];rows:(string|number)[][]};lesson:{title:string;intro:string;concepts:string[];example:{story:string;steps:string[]}}};
+export type StatementSpec={company:string;reportDate:string;periodStart:string;rowCount:number;sections:string[];labels:{id:string;name:string}[];titles:string[];sourceNote:string};
+export type StatementAnswer={company:string;title:string;basis:string;date:string;rows:{label:string;section:string;amount:string}[]};

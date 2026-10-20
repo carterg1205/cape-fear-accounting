@@ -1,3 +1,4 @@
+import {classRoot,classEnrollment,unitSchedule} from './classes';
 import {transactionPresentation,limitedAccounts} from './transaction-presentation';
 import {reconcileBooks,correctionLedger,correctionTime} from './book-corrections';
 import {preparedCourse,courseLedger} from './prepared-course';
@@ -44,6 +45,7 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
   const user=token?await sql('SELECT u.id,u.name,u.email,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires>? AND u.active=1',await digest(token),Date.now()).first<User>():null;
   if(!user)fail('Please sign in.',401);
   if(path==='/api/logout'&&req.method==='POST'){await sql('DELETE FROM sessions WHERE token_hash=?',await digest(token!)).run();return new Response('{}',{headers:{'Set-Cookie':'session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0','Content-Type':'application/json'}});}
+  const classRootResponse=await classRoot({req,url,env,user,sql,body,fail,json});if(classRootResponse)return classRootResponse;
   const sections=(await sql(user.role==='owner'?'SELECT * FROM sections':'SELECT DISTINCT s.* FROM sections s LEFT JOIN enrollments e ON e.section_id=s.id WHERE e.user_id=? OR s.instructor_id=?',...(user.role==='owner'?[]:[user.id,user.id])).all()).results;
   const sectionId=url.searchParams.get('section')||String(sections[0]?.id||'');
   if(!sections.some(s=>s.id===sectionId))fail('No access to this section.',403);
@@ -51,6 +53,7 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
   const instructor=user.role==='owner'||(user.role==='instructor'&&section?.instructor_id===user.id);
   const accounts=(await sql('SELECT * FROM accounts ORDER BY id').all<Account>()).results;
   const ctx={req,url,env,user,sectionId,section,sections,instructor,accounts,sql,body,fail,json};
+  const classResponse=await classEnrollment(ctx)||await unitSchedule(ctx);if(classResponse)return classResponse;
   const preparedResponse=await preparedCourse(ctx);if(preparedResponse)return preparedResponse;
   const classroomResponse=await classroom({req,url,env,user,sectionId,section,sections,instructor,accounts,sql,body,fail,json});if(classroomResponse)return classroomResponse;
   if(path==='/api/students'&&req.method==='POST'){
@@ -75,7 +78,7 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
   }
   if(path==='/api/state'&&req.method==='GET'){
    const chosenVersion=url.searchParams.get('version')||section?.course_version||'legacy';
-   const presentationVersion=chosenVersion==='legacy'?null:await sql('SELECT params FROM course_versions WHERE id=? AND section_id=?',chosenVersion,sectionId).first<any>();const presentationParams=presentationVersion?JSON.parse(presentationVersion.params):undefined;
+   const presentationVersion=chosenVersion==='legacy'?null:await sql('SELECT params,model_version FROM course_versions WHERE id=? AND section_id=?',chosenVersion,sectionId).first<any>();const presentationParams=presentationVersion?JSON.parse(presentationVersion.params):undefined;
    const assignments=(await sql('SELECT k.accepted AS private_key,a.*,COALESCE(x.due_at,a.due_at) AS effective_due_at,e.id AS entry_id,e.created_at AS submitted_at,(SELECT COUNT(*) FROM attempts t WHERE t.user_id=? AND t.assignment_id=a.id) AS attempts FROM assignments a LEFT JOIN answer_keys k ON k.assignment_id=a.id LEFT JOIN student_submissions e ON e.assignment_id=a.id AND e.user_id=? LEFT JOIN extensions x ON x.assignment_id=a.id AND x.user_id=? WHERE a.section_id=? AND (a.published=1 OR ?=1) AND ((?=\'legacy\' AND a.course_version IS NULL) OR a.course_version=?) ORDER BY a.unit,a.sort_order,a.transaction_date',user.id,user.id,user.id,sectionId,instructor?1:0,chosenVersion,chosenVersion).all()).results.map((a:any)=>{
     const unlocked=open(a);const safe={...a,unlocked,correction_at:section?.book_correction_enabled?correctionTime(a.effective_due_at,Number(section.book_correction_delay_hours)):null};delete safe.explanation;delete safe.expected_reference;delete safe.cash_flow;delete safe.private_key;if(instructor||unlocked){Object.assign(safe,transactionPresentation(a,presentationParams));safe.account_choices=limitedAccounts(a.unit,accounts,JSON.parse(a.private_key||'[]'));}
     if(!instructor&&!unlocked){delete safe.document;delete safe.instructions;delete safe.activity_data;}if(a.entry_id)safe.explanation=a.explanation;return safe;
@@ -85,7 +88,7 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
    const entries=(await sql('SELECT e.* FROM entries e JOIN assignments a ON a.id=e.assignment_id WHERE e.user_id=? AND a.section_id=? AND a.course_version IS NULL ORDER BY e.date,e.created_at',user.id,sectionId).all()).results;
    const lines=(await sql('SELECT l.*,e.date,e.memo,e.reference FROM lines l JOIN entries e ON e.id=l.entry_id JOIN assignments a ON a.id=e.assignment_id WHERE e.user_id=? AND a.section_id=? AND a.course_version IS NULL ORDER BY e.date,e.created_at,l.id',user.id,sectionId).all<Line>()).results;
    const drafts=(await sql('SELECT d.* FROM drafts d JOIN assignments a ON a.id=d.assignment_id WHERE d.user_id=? AND a.section_id=?',user.id,sectionId).all()).results;
-   const ledger=await courseLedger(ctx,user.id);if(!ledger)await reconcileBooks(env.DB,{sectionId,studentId:user.id});const correction=ledger?null:await correctionLedger(env.DB,user.id,sectionId,null);const versions=(await sql('SELECT id,name,status FROM course_versions WHERE section_id=? ORDER BY created_at DESC',sectionId).all()).results;return json({user,sections,section,accounts,assignments,entries:ledger?.entries||entries,lines:ledger?.lines||[...lines,...(correction?.lines||[])],trial:trialBalance(accounts,(ledger?.lines||[...lines,...(correction?.lines||[])]) as Line[]),drafts,versions,viewVersion:chosenVersion,unit:ledger?.unit,providedCount:ledger?.providedCount||0,correctionCount:ledger?.correctionCount||correction?.count||0,corrections:ledger?.corrections||correction?.entries||[]});
+   const completedWork=(await sql('SELECT c.assignment_id,c.answers FROM completions c JOIN assignments a ON a.id=c.assignment_id WHERE c.user_id=? AND a.section_id=?',user.id,sectionId).all()).results;const ledger=await courseLedger(ctx,user.id);if(!ledger)await reconcileBooks(env.DB,{sectionId,studentId:user.id});const correction=ledger?null:await correctionLedger(env.DB,user.id,sectionId,null);const versions=(await sql('SELECT id,name,status FROM course_versions WHERE section_id=? ORDER BY created_at DESC',sectionId).all()).results;return json({user,sections,section,accounts,assignments,entries:ledger?.entries||entries,lines:ledger?.lines||[...lines,...(correction?.lines||[])],completedWork,trial:trialBalance(accounts,(ledger?.lines||[...lines,...(correction?.lines||[])]) as Line[]),drafts,versions,courseModelVersion:presentationVersion?.model_version||1,viewVersion:chosenVersion,unit:ledger?.unit,providedCount:ledger?.providedCount||0,correctionCount:ledger?.correctionCount||correction?.count||0,corrections:ledger?.corrections||correction?.entries||[]});
   }
   if(path==='/api/instructor'&&req.method==='GET'){
    if(!instructor)fail('Instructor access required.',403);

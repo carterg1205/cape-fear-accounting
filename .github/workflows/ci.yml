@@ -29,3 +29,4 @@ jobs:
           node scripts/course-integration.mjs
           node scripts/correction-integration.mjs
           node scripts/transaction-integration.mjs
+          node scripts/statement-integration.mjs

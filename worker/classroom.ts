@@ -83,9 +83,11 @@ export async function classroom(c:Context):Promise<Response|null>{
  }
  if(path==='/api/reports'&&req.method==='GET'){
   if(!instructor&&!section.reports_unlocked)fail('Your instructor has not unlocked financial statements.',403);
+  const reportVersion=url.searchParams.get('version')||section.course_version,reportCourse=reportVersion&&reportVersion!=='legacy'?await sql('SELECT params,model_version FROM course_versions WHERE id=? AND section_id=?',reportVersion,sectionId).first<any>():null;
+  if(!instructor&&reportCourse?.model_version>=2&&!await sql("SELECT id FROM assignments WHERE course_version=? AND unit=13 AND (first_released_at IS NOT NULL OR (published=1 AND (release_mode='open' OR (release_mode='scheduled' AND opens_at<=?)))) LIMIT 1",reportVersion,new Date().toISOString()).first())fail('Financial analysis opens in Unit 13. Prepare statements inside your weekly units first.',403);
   const studentId=url.searchParams.get('student')||user.id;if(studentId!==user.id&&(!instructor||!await sql("SELECT e.user_id FROM enrollments e JOIN users u ON u.id=e.user_id WHERE e.user_id=? AND e.section_id=? AND u.role='student'",studentId,sectionId).first()))fail('No access to this student record.',403);
   const lines=(await sql('SELECT l.*,e.date,a.cash_flow FROM lines l JOIN entries e ON e.id=l.entry_id JOIN assignments a ON a.id=e.assignment_id WHERE e.user_id=? AND a.section_id=? AND a.course_version IS NULL',studentId,sectionId).all<Line&{date:string;cash_flow:string}>()).results;
-  const ledger=await courseLedger(c,studentId);if(ledger)return json(financialStatements(accounts,ledger.lines as any));await reconcileBooks(env.DB,{sectionId,studentId});const corrected=await correctionLedger(env.DB,studentId,sectionId,null);return json(financialStatements(accounts,[...lines,...corrected.lines] as any));
+  const ledger=await courseLedger(c,studentId);if(ledger)return json({...financialStatements(accounts,ledger.lines as any),company:reportCourse?JSON.parse(reportCourse.params).company:undefined});await reconcileBooks(env.DB,{sectionId,studentId});const corrected=await correctionLedger(env.DB,studentId,sectionId,null);return json(financialStatements(accounts,[...lines,...corrected.lines] as any));
  }
  if(path==='/api/grades.csv'&&req.method==='GET'){
   staff();const student=url.searchParams.get('student')||'',activity=url.searchParams.get('assignment')||'';

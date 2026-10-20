@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 const base='http://127.0.0.1:8787',cookies={};let checks=0;
 async function req(who,path,data,status=200){const r=await fetch(base+'/api/'+path,{method:data===undefined?'GET':'POST',headers:{Origin:base,Cookie:cookies[who]||'','Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});const d=await r.json();assert.equal(r.status,status,JSON.stringify(d));checks++;if(r.headers.get('set-cookie'))cookies[who]=r.headers.get('set-cookie').split(';')[0];return d;}
 await req('i','login',{demo:'instructor'});await req('s','login',{demo:'student'});
-await req('i','course/save',{params:{},name:'Scheduled correction test'});const state=await req('i','state'),assign=key=>state.assignments.find(a=>a.template_key===key),now=Date.now(),ago=h=>new Date(now-h*3600000).toISOString(),later=h=>new Date(now+h*3600000).toISOString();
+await req('i','course/save',{modelVersion:1,params:{},name:'Scheduled correction test'});const state=await req('i','state'),assign=key=>state.assignments.find(a=>a.template_key===key),now=Date.now(),ago=h=>new Date(now-h*3600000).toISOString(),later=h=>new Date(now+h*3600000).toISOString();
 const settings=(correctionEnabled,correctionDelayHours)=>({reportsUnlocked:true,weight:5,correctionEnabled,correctionDelayHours});
 await req('s','section/settings',settings(true,24),403);await req('i','section/settings',settings(true,-1),400);await req('i','section/settings',settings(true,169),400);await req('i','section/settings',settings(true,1.5),400);
 await req('i','section/settings',settings(true,24));
@@ -37,12 +37,12 @@ await req('i',`assignments/${assign('u4a').id}/release`,{mode:'open'});
 s=await req('s','state');assert.equal(s.correctionCount,2);assert.equal(s.lines.some(l=>l.account==='1200'),false);assert.equal(s.lines.some(l=>l.account==='1300'&&l.credit),false);assert.ok(s.lines.some(l=>l.memo==='Provided business record · Advance tour booking deposit'));
 const report=await req('s','reports');assert.equal(report.equationDifference,0);assert.equal(report.cash,1840000);
 // Frozen correction content is not replaced, and correction records never appear as graded submissions.
-await req('i','course/save',{id:state.viewVersion,revision:1,params:{capital:3000000},name:'Cannot replace history'},409);
+await req('i','course/save',{modelVersion:1,id:state.viewVersion,revision:1,params:{capital:3000000},name:'Cannot replace history'},409);
 const admin=await req('i','instructor');assert.equal(admin.submissions.filter(x=>x.user_id==='local-student'&&state.assignments.some(a=>a.id===x.assignment_id)).length,2);
 // Scheduled maintenance applies corrections even when no student opens the app.
-await req('i','course/save',{params:{},name:'Background correction test'});const background=await req('i','state'),target=background.assignments.find(a=>a.template_key==='u2a');
+await req('i','course/save',{modelVersion:1,params:{},name:'Background correction test'});const background=await req('i','state'),target=background.assignments.find(a=>a.template_key==='u2a');
 await req('i',`assignments/${target.id}/release`,{mode:'open',dueAt:ago(1)});
 const scheduled=await fetch(base+'/__scheduled?cron='+encodeURIComponent('*/15 * * * *'));assert.equal(scheduled.status,200);await scheduled.text();checks++;
 await req('i','section/settings',settings(false,0));const fixed=await req('s','state');assert.equal(fixed.correctionCount,1);assert.equal(fixed.trial.find(a=>a.id==='1500').balance,240000);
-await req('i','course/save',{id:background.viewVersion,revision:1,params:{equipment:300000},name:'Frozen by correction'},409);
+await req('i','course/save',{modelVersion:1,id:background.viewVersion,revision:1,params:{equipment:300000},name:'Frozen by correction'},409);
 console.log('Book-correction HTTP checks passed:',checks);

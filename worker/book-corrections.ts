@@ -8,7 +8,7 @@ export async function reconcileBooks(db:D1Database,scope?:{sectionId:string;stud
  const compiled=new Map<string,ReturnType<typeof compileCourse>>();
  // A 25-record batch stays within the free-tier D1 query budget. State/report requests catch up the requesting student too.
  {
-  const rows=(await sql(`SELECT a.*,en.user_id,COALESCE(x.due_at,a.due_at) AS effective_due_at,s.book_correction_delay_hours,v.params,k.accepted
+  const rows=(await sql(`SELECT a.*,en.user_id,COALESCE(x.due_at,a.due_at) AS effective_due_at,s.book_correction_delay_hours,v.params,v.model_version,k.accepted
    FROM assignments a JOIN sections s ON s.id=a.section_id JOIN enrollments en ON en.section_id=s.id JOIN users u ON u.id=en.user_id
    JOIN answer_keys k ON k.assignment_id=a.id LEFT JOIN course_versions v ON v.id=a.course_version
    LEFT JOIN extensions x ON x.assignment_id=a.id AND x.user_id=en.user_id
@@ -28,7 +28,7 @@ export async function reconcileBooks(db:D1Database,scope?:{sectionId:string;stud
     const key=JSON.parse(a.accepted);if(!Array.isArray(key)||validate(key[0],accounts))continue;
     records=[{unit:a.unit,date:a.transaction_date,memo:a.title,reference:a.expected_reference,cash_flow:a.cash_flow,lines:key[0]}];
    }else if(a.params){
-    if(!compiled.has(a.course_version))compiled.set(a.course_version,compileCourse(JSON.parse(a.params)));
+    if(!compiled.has(a.course_version))compiled.set(a.course_version,compileCourse(JSON.parse(a.params),Number(a.model_version)||1));
     records=compiled.get(a.course_version)!.records.filter(r=>r.activityKey===a.template_key).map(r=>({...r,reference:a.expected_reference}));
    }
    if(!records.length)continue;

@@ -10,7 +10,7 @@ afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 describe('student manual workspace',()=>{
  it('requires a student to enter their own date and accounts, and sends exact cents for checking',async()=>{
   render(<App/>);await screen.findByText('Welcome back, Jamie.');
-  fireEvent.click(screen.getByRole('button',{name:'Open workspace'}));
+  fireEvent.click(screen.getByRole('button',{name:'Start this week’s unit'}));
   expect((screen.getByLabelText('Transaction date') as HTMLInputElement).value).toBe('');
   expect((screen.getByLabelText('Account line 1') as unknown as HTMLSelectElement).value).toBe('');
   fireEvent.change(screen.getByLabelText('Transaction date'),{target:{value:'2027-01-11'}});
@@ -24,7 +24,7 @@ describe('student manual workspace',()=>{
   const check=calls.find(c=>c.url.endsWith('/check'));expect(JSON.parse(check!.options.body).lines).toEqual([{account:'1010',debit:29,credit:0},{account:'3010',debit:0,credit:29}]);expect(calls.some(c=>c.url.endsWith('/post'))).toBe(false);
  });
  it('keeps manually entered work when switching document/entry tabs and adding compound lines',async()=>{
-  render(<App/>);await screen.findByText('Welcome back, Jamie.');fireEvent.click(screen.getByRole('button',{name:'Open workspace'}));
+  render(<App/>);await screen.findByText('Welcome back, Jamie.');fireEvent.click(screen.getByRole('button',{name:'Start this week’s unit'}));
   fireEvent.change(screen.getByLabelText('Memo'),{target:{value:'Work in progress'}});
   fireEvent.click(screen.getByRole('button',{name:'Journal entry'}));fireEvent.click(screen.getByRole('button',{name:'Business document'}));
   expect((screen.getByLabelText('Memo') as HTMLInputElement).value).toBe('Work in progress');
@@ -58,7 +58,7 @@ describe('instructor student management',()=>{
 describe('wrong-entry feedback',()=>{
  it('uses yellow review styling and words when the entry is wrong',async()=>{
   vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url.includes('config')?{local:true}:url.includes('/check')?{correct:false,feedback:'The reference number must match the source document exactly.'}:structuredClone(state)})));
-  render(<App/>);await screen.findByText('Welcome back, Jamie.');fireEvent.click(screen.getByRole('button',{name:'Open workspace'}));fireEvent.click(screen.getByRole('button',{name:'Check entry'}));
+  render(<App/>);await screen.findByText('Welcome back, Jamie.');fireEvent.click(screen.getByRole('button',{name:'Start this week’s unit'}));fireEvent.click(screen.getByRole('button',{name:'Check entry'}));
   const alert=await screen.findByRole('alert');expect(alert.classList.contains('warning')).toBe(true);expect(alert.textContent).toContain('Needs review.');expect(alert.textContent).toContain('reference number');expect(alert.classList.contains('notice')).toBe(false);
  });
 });
@@ -105,7 +105,7 @@ describe('refresh and accounting workspace',()=>{
   vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url.includes('config')?{local:true}:{...structuredClone(state),versions:[{id:'v',name:'Edition'}],viewVersion:'v',unit:1}})));
   render(<App/>);await screen.findByText('Welcome back, Jamie.');
   expect(screen.queryByLabelText('Course edition')).toBeNull();expect(screen.queryByText('Learn by doing.')).toBeNull();
-  fireEvent.click(screen.getByRole('button',{name:'Open workspace'}));
+  fireEvent.click(screen.getByRole('button',{name:'Start this week’s unit'}));
   expect(screen.queryByText('Review the concepts and worked example')).toBeNull();
   expect(screen.getByLabelText('Account line 1').getAttribute('role')).toBe('combobox');
   expect((screen.getByLabelText('debit line 1') as HTMLInputElement).value).toBe('');
@@ -113,5 +113,22 @@ describe('refresh and accounting workspace',()=>{
  it('shows a recoverable load error instead of a login form on network failure',async()=>{
   vi.stubGlobal('fetch',vi.fn(async(url:string)=>{if(url.includes('/state'))throw Error('Network unavailable');return {ok:true,json:async()=>({local:true})};}));
   render(<App/>);await screen.findByText('Network unavailable');expect(screen.queryByRole('button',{name:'Sign in'})).toBeNull();expect(screen.getByRole('button',{name:'Try again'})).toBeTruthy();
+ });
+});
+
+describe('class switching',()=>{
+ it('waits for the selected class before allowing a weekly unit to open',async()=>{
+  const first={...structuredClone(state),section:{id:'first',name:'First class',weight:5},sections:[{id:'first',name:'First class'},{id:'second',name:'Second class'}]},second={...first,section:{id:'second',name:'Second class',weight:5},assignments:[{...structuredClone(state.assignments[0]),id:'second-task',unit:2,title:'Second class task'}]};
+  let finish:(value:any)=>void=()=>{};const pending=new Promise(resolve=>{finish=resolve;});
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url.includes('config')?{}:url.includes('section=second')?pending:structuredClone(first)})));
+  render(<App/>);await screen.findByText('Welcome back, Jamie.');
+  fireEvent.change(screen.getByLabelText('Current class'),{target:{value:'second'}});
+  await waitFor(()=>expect((screen.getByRole('button',{name:'Start this week’s unit'}) as HTMLButtonElement).disabled).toBe(true));
+  finish(second);
+  await waitFor(()=>expect((screen.getByRole('button',{name:'Start this week’s unit'}) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole('button',{name:'Start this week’s unit'}));
+  expect(screen.getByRole('button',{name:'Step 1: Second class task'})).toBeTruthy();
+  await waitFor(()=>expect(window.location.hash).toContain('section=second'));
+  expect(screen.getByRole('button',{name:'Step 1: Second class task'})).toBeTruthy();
  });
 });

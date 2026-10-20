@@ -24,6 +24,14 @@ A React + TypeScript accounting classroom application with a Cloudflare Worker A
 - Incorrect entries now display a **yellow Needs review** message. Both checking and posting require a case-sensitive match to the document reference, ignoring outside whitespace. A balanced entry with a wrong reference cannot post.
 - **Course Plan:** a 13-unit progression based on the uploaded ACG 201 outline. The builder shows prerequisites and scope limits for the chosen unit. See COURSE_ALIGNMENT.md for implementation boundaries and the remaining full-course work.
 
+## Expanded course and weekly assignments
+
+- Course Builder is a three-step setup: course details, approved unit settings, review and save. The new model has 43 prepared assignments, including 13 line-by-line statement tasks. Editing approved names and figures regenerates questions, documents and every dependent key. Existing 26-activity courses retain model 1 and their submissions; use **Create updated course** to adopt the expanded course separately.
+- Assignments uses a unit-grouped schedule table. Red lock, yellow clock and green check buttons show locked, scheduled and open states. Schedule/deadline opens a visible dialog; schedule a whole unit or one activity in Eastern time. Student extensions remain separate.
+- Classes lets professors create independent classes and enroll students from classes they manage. Create new accounts under Students. The top-right class selector changes the roster, course and schedule together.
+- Students see weekly units, a current-week completion ring, upcoming units and a progress navigator across all steps. Progress counts correct submitted work, not checks or automatic book corrections. Refresh preserves the page and unsaved work.
+- Statement working papers require manual headings, classifications, amounts and subtotals. Incorrect fields receive yellow feedback with specific row details. Financial Analysis stays locked until Unit 13 is released and the instructor enables reports for expanded courses.
+
 ## Local development
 
 Node 22+ and npm required. From this directory:
@@ -128,9 +136,9 @@ This application is a tested local beta, not university-approved or certified FE
 
 ### Prepared course (Phase 3)
 
-Open **Course Builder → Use prepared course** to install all 13 units and 26 activities for a section. Installation selects the new edition and leaves every activity locked. Preview the stories and examples, customize the listed names/numbers, then release activities from **Assignments**. Saving regenerates the complete course's documents, keys and starting checkpoints. After student work begins, use **Create new edition**; old work is preserved in course history.
+Open **Course Builder → Review & save → Use prepared course** to install all 13 units and 43 activities for a section. Installation selects the new edition and leaves every activity locked. Preview the stories and examples, customize the listed names/numbers, then release activities from **Assignments**. Saving regenerates the complete course's documents, keys and starting checkpoints. After student work begins, use **Create updated course**; old work is preserved in course history.
 
-Instructor course-edition and ledger controls show earlier exercise sets and selected-unit records. Students see the accounting workspace without edition controls. Financial statements combine actual student entries, supplied business transactions and deadline-triggered book corrections. Worksheet activities earn completion credit without adding journal entries. See `VALIDATION.md` for the simulation and versioning model.
+Course history is managed inside Course Builder; global course-edition boxes are removed from both dashboards. Instructor financial reports offer a unit selector. Financial statements combine actual student entries, supplied business transactions and deadline-triggered book corrections. Worksheet activities earn completion credit without adding journal entries. See `VALIDATION.md` for the simulation and versioning model.
 
 Run `node scripts/course-integration.mjs` after the original integration and classroom suites against the same disposable local worker/database.
 
@@ -141,7 +149,7 @@ Run `node scripts/course-integration.mjs` after the original integration and cla
 
 Correction records are immutable and separate from student submissions: they do not earn points or alter grades/attempts. Previously posted correct entries remain unchanged. If a later extension permits a student to post an already corrected transaction, the original correction remains in history while its financial effect is replaced by the student's matching entry, preventing duplication. Applied corrections also freeze the related answer keys/course configuration.
 
-The app checks the session behind a loading screen and preserves the selected page, section and journal on refresh through the URL. Unsaved manual journal fields are restored from tab-local, user-scoped session storage. Debit/credit transactions remain manual, with blank account selectors and amount fields; working papers are reserved for analysis/calculation topics. The desktop workspace places supporting documents or transaction details on the left and entry fields on the right.
+The app checks the session behind a loading screen and preserves the selected page, section and journal on refresh through the URL. Unsaved manual journal fields are restored from tab-local, user-scoped session storage. Debit/credit transactions remain manual, with blank account selectors and amount fields; working papers support analysis/calculation topics and manual statement preparation. The desktop workspace places supporting documents or transaction details on the left and entry fields on the right.
 
 Closing a previously released assignment keeps its accounting history and does not cancel an eligible deadline correction. Unreleased locks still hide future transactions. Released/closed assignments remain part of the student's grade denominator.
 
