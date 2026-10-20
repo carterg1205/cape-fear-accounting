@@ -70,3 +70,5 @@ Before student attempts, saves regenerate the complete edition atomically with a
 - Background correction work is bounded to 25 records per run to leave room within the D1 free-tier per-invocation query budget. A student's own state/report read catches up their prepared course (fewer than 25 journal/analysis posting records). Larger background queues continue on subsequent runs.
 
 - Migration 0006 preserves release history so closing a previously released week does not remove supplied records, roll back the ledger period, cancel eligible corrections or exclude missed work from the dashboard grade. Previously unreleased locks and future schedules remain protected. Four additional HTTP checks cover closed-week correction eligibility and retained supplied transactions.
+
+- Responsive follow-up verified 390, 768, 1024, 1100 and 1440-pixel widths. Smaller laptop windows stack the panels before their minimum column widths would overflow.
