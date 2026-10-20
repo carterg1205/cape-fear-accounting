@@ -14,7 +14,7 @@ export async function reconcileBooks(db:D1Database,scope?:{sectionId:string;stud
    LEFT JOIN extensions x ON x.assignment_id=a.id AND x.user_id=en.user_id
    WHERE u.role='student' AND u.active=1 AND s.book_correction_enabled=1 AND a.published=1
    AND (a.course_version IS NULL OR a.course_version=s.course_version)
-   AND (a.release_mode='open' OR (a.release_mode='scheduled' AND julianday(a.opens_at)<=julianday(?)))
+   AND (a.first_released_at IS NOT NULL OR a.release_mode='open' OR (a.release_mode='scheduled' AND julianday(a.opens_at)<=julianday(?)))
    AND (julianday(COALESCE(x.due_at,a.due_at))+s.book_correction_delay_hours/24.0)<=julianday(?)
    AND (a.activity_type='journal' OR a.template_key IN ('u1a','u1b'))
    AND NOT EXISTS(SELECT 1 FROM entries e WHERE e.assignment_id=a.id AND e.user_id=en.user_id)
@@ -38,7 +38,7 @@ export async function reconcileBooks(db:D1Database,scope?:{sectionId:string;stud
      JOIN enrollments en ON en.section_id=s.id JOIN users u ON u.id=en.user_id LEFT JOIN extensions x ON x.assignment_id=a.id AND x.user_id=en.user_id
      WHERE a.id=? AND en.user_id=? AND u.role='student' AND u.active=1 AND s.book_correction_enabled=1 AND a.published=1
      AND (a.course_version IS NULL OR a.course_version=s.course_version) AND a.course_revision IS ?
-     AND (a.release_mode='open' OR (a.release_mode='scheduled' AND julianday(a.opens_at)<=julianday(?)))
+     AND (a.first_released_at IS NOT NULL OR a.release_mode='open' OR (a.release_mode='scheduled' AND julianday(a.opens_at)<=julianday(?)))
      AND (julianday(COALESCE(x.due_at,a.due_at))+s.book_correction_delay_hours/24.0)<=julianday(?)
      AND COALESCE(x.due_at,a.due_at)=? AND s.book_correction_delay_hours=?
      AND EXISTS(SELECT 1 FROM answer_keys k WHERE k.assignment_id=a.id AND k.accepted=?) AND a.document=? AND a.cash_flow=?

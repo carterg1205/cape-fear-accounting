@@ -111,7 +111,7 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
     }
     let dueAt=a.due_at;if('dueAt' in data){if(data.dueAt!==null&&(typeof data.dueAt!=='string'||!Number.isFinite(Date.parse(data.dueAt))))fail('Choose a valid due date.');dueAt=data.dueAt?new Date(data.dueAt).toISOString():null;}
     if(data.mode==='scheduled'&&dueAt&&new Date(data.opensAt).toISOString()>dueAt)fail('The due date must follow the opening date.');
-    await env.DB.batch([sql('UPDATE assignments SET release_mode=?,opens_at=?,due_at=?,published=CASE WHEN ?=\'locked\' THEN published ELSE 1 END WHERE id=?',data.mode,data.mode==='scheduled'?new Date(data.opensAt).toISOString():null,dueAt,data.mode,id),sql('INSERT INTO audit(id,actor,action,target,details) VALUES(?,?,?,?,?)',crypto.randomUUID(),user.id,'assignment.release',id,JSON.stringify(data))]);return json({ok:true});
+    await env.DB.batch([sql('UPDATE assignments SET release_mode=?,opens_at=?,due_at=?,published=CASE WHEN ?=\'locked\' THEN published ELSE 1 END,first_released_at=? WHERE id=?',data.mode,data.mode==='scheduled'?new Date(data.opensAt).toISOString():null,dueAt,data.mode,a.first_released_at||(data.mode==='open'||a.release_mode==='open'?new Date().toISOString():a.release_mode==='scheduled'&&a.opens_at&&Date.parse(a.opens_at)<=Date.now()?a.opens_at:null),id),sql('INSERT INTO audit(id,actor,action,target,details) VALUES(?,?,?,?,?)',crypto.randomUUID(),user.id,'assignment.release',id,JSON.stringify(data))]);return json({ok:true});
    }
    const preview=instructor&&action==='check'&&url.searchParams.get('preview')==='true';
    if(user.role!=='student'&&!preview)fail('Only students can submit accounting work.',403);

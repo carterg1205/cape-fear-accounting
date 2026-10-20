@@ -8,6 +8,8 @@ await req('s','section/settings',settings(true,24),403);await req('i','section/s
 await req('i','section/settings',settings(true,24));
 for(const key of ['u1a','u1b'])await req('i',`assignments/${assign(key).id}/release`,{mode:'open',dueAt:ago(1)});
 let s=await req('s','state');assert.equal(s.correctionCount,0);assert.equal(s.trial.find(a=>a.id==='1010').balance,0);assert.ok(s.assignments.find(a=>a.template_key==='u1a').correction_at>new Date().toISOString());
+// Closing a previously released week does not remove its history or cancel due corrections.
+await req('i',`assignments/${assign('u1a').id}/release`,{mode:'locked'});
 // Correction is disabled independently of deadlines.
 await req('i','section/settings',settings(false,0));s=await req('s','state');assert.equal(s.correctionCount,0);
 // An individual extension postpones only that student's pending correction.
@@ -24,14 +26,16 @@ const a=assign('u2a'),payload={date:a.transaction_date,reference:'CFO-U02-A',rev
 assert.equal((await req('s',`assignments/${a.id}/post`,payload)).correct,true);
 for(const key of ['u2a','u2b'])await req('i',`assignments/${assign(key).id}/release`,{mode:'open',dueAt:ago(1)});
 s=await req('s','state');assert.equal(s.correctionCount,3);assert.equal(s.entries.length,1);assert.equal(s.assignments.filter(a=>a.entry_id).length,1);assert.equal(s.trial.find(a=>a.id==='1010').balance,1750000);assert.equal(s.corrections.some(c=>c.assignment_id===a.id),false);
+// Provided transactions survive closing a prior unit, as do the default ledger period and balances.
+await req('i',`assignments/${assign('u3a').id}/release`,{mode:'open'});await req('i',`assignments/${assign('u3a').id}/release`,{mode:'locked'});const closed=await req('s','state');assert.equal(closed.unit,3);assert.equal(closed.providedCount,1);assert.equal(closed.trial.find(a=>a.id==='1010').balance,1840000);
 // A later extension lets a student earn credit after correction; the same transaction is not duplicated.
 await req('i',`assignments/${assign('u2b').id}/extension`,{studentId:'local-student',dueAt:later(48)});
 const b=assign('u2b');assert.equal((await req('s',`assignments/${b.id}/post`,{date:b.transaction_date,reference:'CFO-U02-B',revision:1,memo:'Purchased insurance policy',lines:[{account:'1300',debit:120000,credit:0},{account:'1010',debit:0,credit:120000}]})).correct,true);
-s=await req('s','state');assert.equal(s.correctionCount,2);assert.equal(s.entries.length,2);assert.equal(s.trial.find(a=>a.id==='1010').balance,1750000);
+s=await req('s','state');assert.equal(s.correctionCount,2);assert.equal(s.entries.length,2);assert.equal(s.trial.find(a=>a.id==='1010').balance,1840000);
 // Opening a later week does not expose answers for assignments without deadlines or locked assignments.
 await req('i',`assignments/${assign('u4a').id}/release`,{mode:'open'});
-s=await req('s','state');assert.equal(s.correctionCount,2);assert.equal(s.lines.some(l=>l.account==='1200'),false);assert.equal(s.lines.some(l=>l.account==='1300'&&l.credit),false);assert.ok(s.lines.some(l=>l.memo==='Provided business record · Advance tour booking deposit')===false);
-const report=await req('s','reports');assert.equal(report.equationDifference,0);assert.equal(report.cash,1750000);
+s=await req('s','state');assert.equal(s.correctionCount,2);assert.equal(s.lines.some(l=>l.account==='1200'),false);assert.equal(s.lines.some(l=>l.account==='1300'&&l.credit),false);assert.ok(s.lines.some(l=>l.memo==='Provided business record · Advance tour booking deposit'));
+const report=await req('s','reports');assert.equal(report.equationDifference,0);assert.equal(report.cash,1840000);
 // Frozen correction content is not replaced, and correction records never appear as graded submissions.
 await req('i','course/save',{id:state.viewVersion,revision:1,params:{capital:3000000},name:'Cannot replace history'},409);
 const admin=await req('i','instructor');assert.equal(admin.submissions.filter(x=>x.user_id==='local-student'&&state.assignments.some(a=>a.id===x.assignment_id)).length,2);
