@@ -1,10 +1,38 @@
 {
- "$schema":"node_modules/wrangler/config-schema.json",
- "name":"cape-fear-accounting-local",
- "main":"worker/index.ts",
- "compatibility_date":"2026-10-01",
- "assets":{"directory":"./dist","binding":"ASSETS","not_found_handling":"single-page-application","run_worker_first":["/api/*"]},
- "vars":{"ENVIRONMENT":"local","DEV_AUTH":"true"},
- "d1_databases":[{"binding":"DB","database_name":"cape-fear-accounting-local","database_id":"00000000-0000-0000-0000-000000000001","migrations_dir":"migrations"}],
- "r2_buckets":[{"binding":"DOCUMENTS","bucket_name":"cape-fear-accounting-local"}]
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cape-fear-accounting-local",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*",
+      "/__scheduled"
+    ]
+  },
+  "vars": {
+    "ENVIRONMENT": "local",
+    "DEV_AUTH": "true"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cape-fear-accounting-local",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "DOCUMENTS",
+      "bucket_name": "cape-fear-accounting-local"
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "*/15 * * * *"
+    ]
+  }
 }

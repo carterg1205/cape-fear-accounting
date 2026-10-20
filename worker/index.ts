@@ -1,3 +1,4 @@
+import {reconcileBooks,correctionLedger,correctionTime} from './book-corrections';
 import {preparedCourse,courseLedger} from './prepared-course';
 import { validate, trialBalance, referenceFeedback, type Account, type Line } from './accounting';
 import {classroom} from './classroom';
@@ -74,15 +75,15 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
   if(path==='/api/state'&&req.method==='GET'){
    const chosenVersion=url.searchParams.get('version')||section?.course_version||'legacy';
    const assignments=(await sql('SELECT a.*,COALESCE(x.due_at,a.due_at) AS effective_due_at,e.id AS entry_id,e.created_at AS submitted_at,(SELECT COUNT(*) FROM attempts t WHERE t.user_id=? AND t.assignment_id=a.id) AS attempts FROM assignments a LEFT JOIN student_submissions e ON e.assignment_id=a.id AND e.user_id=? LEFT JOIN extensions x ON x.assignment_id=a.id AND x.user_id=? WHERE a.section_id=? AND (a.published=1 OR ?=1) AND ((?=\'legacy\' AND a.course_version IS NULL) OR a.course_version=?) ORDER BY a.unit,a.sort_order,a.transaction_date',user.id,user.id,user.id,sectionId,instructor?1:0,chosenVersion,chosenVersion).all()).results.map((a:any)=>{
-    const unlocked=open(a);const safe={...a,unlocked};delete safe.explanation;delete safe.expected_reference;delete safe.cash_flow;
+    const unlocked=open(a);const safe={...a,unlocked,correction_at:section?.book_correction_enabled?correctionTime(a.effective_due_at,Number(section.book_correction_delay_hours)):null};delete safe.explanation;delete safe.expected_reference;delete safe.cash_flow;
     if(!instructor&&!unlocked){delete safe.document;delete safe.instructions;delete safe.activity_data;}if(a.entry_id)safe.explanation=a.explanation;return safe;
    });
    const attached=(await sql('SELECT d.id,d.assignment_id,d.filename,d.content_type,d.size FROM documents d JOIN assignments a ON a.id=d.assignment_id WHERE a.section_id=?',sectionId).all()).results;
    for(const a of assignments as any[])a.documents=(instructor||a.unlocked)?attached.filter(d=>d.assignment_id===a.id):[];
-   const entries=(await sql('SELECT e.* FROM entries e JOIN assignments a ON a.id=e.assignment_id WHERE e.user_id=? AND a.section_id=? ORDER BY e.date,e.created_at',user.id,sectionId).all()).results;
-   const lines=(await sql('SELECT l.*,e.date,e.memo,e.reference FROM lines l JOIN entries e ON e.id=l.entry_id JOIN assignments a ON a.id=e.assignment_id WHERE e.user_id=? AND a.section_id=? ORDER BY e.date,e.created_at,l.id',user.id,sectionId).all<Line>()).results;
+   const entries=(await sql('SELECT e.* FROM entries e JOIN assignments a ON a.id=e.assignment_id WHERE e.user_id=? AND a.section_id=? AND a.course_version IS NULL ORDER BY e.date,e.created_at',user.id,sectionId).all()).results;
+   const lines=(await sql('SELECT l.*,e.date,e.memo,e.reference FROM lines l JOIN entries e ON e.id=l.entry_id JOIN assignments a ON a.id=e.assignment_id WHERE e.user_id=? AND a.section_id=? AND a.course_version IS NULL ORDER BY e.date,e.created_at,l.id',user.id,sectionId).all<Line>()).results;
    const drafts=(await sql('SELECT d.* FROM drafts d JOIN assignments a ON a.id=d.assignment_id WHERE d.user_id=? AND a.section_id=?',user.id,sectionId).all()).results;
-   const ledger=await courseLedger(ctx,user.id);const versions=(await sql('SELECT id,name,status FROM course_versions WHERE section_id=? ORDER BY created_at DESC',sectionId).all()).results;return json({user,sections,section,accounts,assignments,entries:ledger?.entries||entries,lines:ledger?.lines||lines,trial:trialBalance(accounts,(ledger?.lines||lines) as Line[]),drafts,versions,viewVersion:chosenVersion,unit:ledger?.unit,providedCount:ledger?.providedCount||0});
+   const ledger=await courseLedger(ctx,user.id);if(!ledger)await reconcileBooks(env.DB,{sectionId,studentId:user.id});const correction=ledger?null:await correctionLedger(env.DB,user.id,sectionId,null);const versions=(await sql('SELECT id,name,status FROM course_versions WHERE section_id=? ORDER BY created_at DESC',sectionId).all()).results;return json({user,sections,section,accounts,assignments,entries:ledger?.entries||entries,lines:ledger?.lines||[...lines,...(correction?.lines||[])],trial:trialBalance(accounts,(ledger?.lines||[...lines,...(correction?.lines||[])]) as Line[]),drafts,versions,viewVersion:chosenVersion,unit:ledger?.unit,providedCount:ledger?.providedCount||0,correctionCount:ledger?.correctionCount||correction?.count||0,corrections:ledger?.corrections||correction?.entries||[]});
   }
   if(path==='/api/instructor'&&req.method==='GET'){
    if(!instructor)fail('Instructor access required.',403);
@@ -136,4 +137,4 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
   }
   return json({error:'Route not found.'},404);
  }catch(e:any){if(!e.status)console.error('Request failed',e.message);return json({error:e.status?e.message:'The request could not be completed.'},e.status||500);}
-}};
+},async scheduled(_event:ScheduledController,env:Env,ctx:ExecutionContext){ctx.waitUntil(reconcileBooks(env.DB));}};

@@ -1,0 +1,5 @@
+export type WorkspaceRoute={page:string;assignment:string;section:string;version:string;unit:string};
+export function readRoute():WorkspaceRoute{const q=new URLSearchParams(window.location.hash.slice(1));return {page:q.get('page')||'Dashboard',assignment:q.get('assignment')||'',section:q.get('section')||'',version:q.get('version')||'',unit:q.get('unit')||''};}
+export function writeRoute(route:WorkspaceRoute){const q=new URLSearchParams();for(const [key,value] of Object.entries(route))if(value)q.set(key,value);window.history.replaceState(null,'',window.location.pathname+window.location.search+'#'+q.toString());}
+export function localDraftKey(user:string,section:string,assignment:string){return `cfo-draft:${user}:${section}:${assignment}`;}
+export function readLocalDraft(user:string,section:string,assignment:string){try{const d=JSON.parse(sessionStorage.getItem(localDraftKey(user,section,assignment))||'null');return d&&typeof d==='object'&&Array.isArray(d.lines)?d:null;}catch{return null;}}

@@ -5,7 +5,7 @@ import {afterEach,beforeEach,describe,it,expect,vi} from 'vitest';
 import {App} from '../src/main';
 const state={user:{id:'s',name:'Jamie Parker',role:'student'},section:{name:'ACG 201',weight:5},sections:[],accounts:[{id:'1010',name:'Cash'},{id:'3010',name:'Common stock'}],assignments:[{id:'capital',title:'A new beginning',unit:1,points:10,unlocked:true,attempts:0,instructions:'Record the stock issuance.',document:JSON.stringify({kind:'DEPOSIT',sender:'Test bank',date:'2027-01-11',total:20000,reference:'DEP-1001'})}],entries:[],lines:[],trial:[],drafts:[]};
 let calls:{url:string;options:any}[]=[];
-beforeEach(()=>{calls=[];vi.stubGlobal('fetch',vi.fn(async(url:string,options:any)=>{calls.push({url,options});return {ok:true,json:async()=>url.includes('config')?{local:true}:url.includes('/check')?{correct:true,feedback:'Ready to post.'}:structuredClone(state)};}));});
+beforeEach(()=>{window.history.replaceState(null,'','/');sessionStorage.clear();calls=[];vi.stubGlobal('fetch',vi.fn(async(url:string,options:any)=>{calls.push({url,options});return {ok:true,json:async()=>url.includes('config')?{local:true}:url.includes('/check')?{correct:true,feedback:'Ready to post.'}:structuredClone(state)};}));});
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
 describe('student manual workspace',()=>{
  it('requires a student to enter their own date and accounts, and sends exact cents for checking',async()=>{
@@ -77,5 +77,41 @@ describe('course-aligned assignment authoring',()=>{
   fireEvent.click(screen.getByRole('button',{name:'Save as draft'}));
   await waitFor(()=>expect(onSaved).toHaveBeenCalledOnce());
   const args=call.mock.calls.find(c=>c[0]==='assignments/save')![1];expect(args.published).toBe(false);expect(args.document.totalCents).toBe(1229);expect(args.unit).toBe(7);expect(args.reference).toBe('AR-301');
+ });
+});
+
+describe('refresh and accounting workspace',()=>{
+ it('shows a loading workspace while checking the session, with no login flash',async()=>{
+  let resolveState!:(value:any)=>void;
+  vi.stubGlobal('fetch',vi.fn((url:string)=>url.includes('/state')?new Promise(resolve=>{resolveState=resolve;}):Promise.resolve({ok:true,json:async()=>({local:true})})));
+  render(<App/>);
+  expect(screen.getByRole('status').textContent).toContain('Opening accounting workspace');
+  expect(screen.queryByRole('button',{name:'Sign in'})).toBeNull();
+  resolveState({ok:true,json:async()=>structuredClone(state)});
+  await screen.findByText('Welcome back, Jamie.');
+  expect(screen.queryByRole('button',{name:'Sign in'})).toBeNull();
+ });
+ it('restores the selected journal and locally entered work after a refresh',async()=>{
+  window.history.replaceState(null,'','/#page=Journal&assignment=capital');
+  sessionStorage.setItem('cfo-draft:s:undefined:capital',JSON.stringify({date:'2027-01-11',memo:'Unsaved work',reference:'DEP-1001',lines:[{account:'1010',debit:'20000',credit:''},{account:'3010',debit:'',credit:'20000'}]}));
+  render(<App/>);
+  await screen.findByLabelText('Memo');
+  expect((screen.getByLabelText('Memo') as HTMLInputElement).value).toBe('Unsaved work');
+  expect((screen.getByLabelText('debit line 1') as HTMLInputElement).value).toBe('20000');
+  expect(screen.queryByText('Welcome back, Jamie.')).toBeNull();
+  expect(window.location.hash).toContain('page=Journal');
+ });
+ it('hides edition controls and teaching banners from the student workspace',async()=>{
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>({ok:true,json:async()=>url.includes('config')?{local:true}:{...structuredClone(state),versions:[{id:'v',name:'Edition'}],viewVersion:'v',unit:1}})));
+  render(<App/>);await screen.findByText('Welcome back, Jamie.');
+  expect(screen.queryByLabelText('Course edition')).toBeNull();expect(screen.queryByText('Learn by doing.')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Open workspace'}));
+  expect(screen.queryByText('Review the concepts and worked example')).toBeNull();
+  expect(screen.getByLabelText('Account line 1').tagName).toBe('SELECT');
+  expect((screen.getByLabelText('debit line 1') as HTMLInputElement).value).toBe('');
+ });
+ it('shows a recoverable load error instead of a login form on network failure',async()=>{
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>{if(url.includes('/state'))throw Error('Network unavailable');return {ok:true,json:async()=>({local:true})};}));
+  render(<App/>);await screen.findByText('Network unavailable');expect(screen.queryByRole('button',{name:'Sign in'})).toBeNull();expect(screen.getByRole('button',{name:'Try again'})).toBeTruthy();
  });
 });

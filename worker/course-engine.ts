@@ -1,3 +1,4 @@
+import {formatBusinessMoney} from '../src/business-format';
 import {courseParameters,defaultCourseParams,type ActivityData,type ActivityField} from '../shared/course-schema';
 import {courseUnits} from '../src/course';
 import {type Line} from './accounting';
@@ -7,13 +8,13 @@ export function validateParams(input:any){
  for(const f of courseParameters){const v=p[f.key];if(f.kind==='name'){if(typeof v!=='string'||!v.trim()||v.length>80)throw Error('Check '+f.label);p[f.key]=v.trim();}else if(f.kind==='date'){if(typeof v!=='string'||!/^\d{4}-\d{2}-01$/.test(v)||!Number.isFinite(Date.parse(v))||Number(v.slice(0,4))<2020||Number(v.slice(0,4))>2090)throw Error('Start on the first day of a month, between 2020 and 2090.');}else if(!Number.isSafeInteger(v)||Number(v)<f.min!||Number(v)>f.max!)throw Error('Check '+f.label);}
  const n=(k:string)=>Number(p[k]);if(n('soldQty')>n('boardQty'))throw Error('Boards sold cannot exceed boards purchased.');if(n('writeoff')>n('badDebt')||n('writeoff')>n('unbilled')+n('soldQty')*n('boardPrice'))throw Error('The write-off must fit the allowance and receivables.');if(n('residual')>=n('newEquipment')+n('delivery')+n('installation'))throw Error('Residual value must be less than equipment cost.');if(n('withheld')>=n('grossPay'))throw Error('Withholding must be less than gross pay.');if(n('issuePrice')<n('par'))throw Error('Issue price cannot be below par.');return p;
 }
-export type RecordRow={unit:number;date:string;memo:string;reference:string;cash_flow:string;lines:Line[]};
+export type RecordRow={unit:number;date:string;memo:string;reference:string;cash_flow:string;lines:Line[];activityKey?:string};
 export function compileCourse(input:any){
- const p=validateParams(input),n=(k:string)=>Number(p[k]),s=(k:string)=>String(p[k]),money=(v:number)=>'$'+(v/100).toFixed(2),round=Math.round;
+ const p=validateParams(input),n=(k:string)=>Number(p[k]),s=(k:string)=>String(p[k]),money=(v:number)=>formatBusinessMoney(v/100),round=Math.round;
  const records:RecordRow[]=[],activities:any[]=[],snapshots:any[]=[];
  const d=(a:string,v:number):Line=>({account:a,debit:v,credit:0}),c=(a:string,v:number):Line=>({account:a,debit:0,credit:v});
  const date=(u:number,day=15)=>{const t=new Date(s('startDate')+'T12:00:00Z');t.setUTCMonth(t.getUTCMonth()+u-1);t.setUTCDate(day);return t.toISOString().slice(0,10);};
- const addRecord=(u:number,memo:string,lines:Line[],cash_flow='none',day=15)=>{if(lines.some(l=>!Number.isSafeInteger(l.debit)||!Number.isSafeInteger(l.credit)||l.debit<0||l.credit<0)||lines.reduce((v,l)=>v+l.debit-l.credit,0)!==0)throw Error('The scenario could not produce balanced records.');records.push({unit:u,date:date(u,day),memo,reference:`PROVIDED-${u}-${records.length+1}`,cash_flow,lines:lines.filter(l=>l.debit||l.credit)});if(net('1010')<0)throw Error('Increase starting capital: these settings would overdraw the business.');};
+ const addRecord=(u:number,memo:string,lines:Line[],cash_flow='none',day=15,activityKey?:string)=>{if(lines.some(l=>!Number.isSafeInteger(l.debit)||!Number.isSafeInteger(l.credit)||l.debit<0||l.credit<0)||lines.reduce((v,l)=>v+l.debit-l.credit,0)!==0)throw Error('The scenario could not produce balanced records.');records.push({unit:u,date:date(u,day),memo,reference:`PROVIDED-${u}-${records.length+1}`,cash_flow,activityKey,lines:lines.filter(l=>l.debit||l.credit)});if(net('1010')<0)throw Error('Increase starting capital: these settings would overdraw the business.');};
  const net=(a:string)=>records.flatMap(r=>r.lines).filter(l=>l.account===a).reduce((v,l)=>v+l.debit-l.credit,0);
  const fields=(pairs:[string,string,ActivityField['kind'],number|string][])=>({fields:pairs.map(([id,label,kind])=>({id,label,kind})),expected:Object.fromEntries(pairs.map(([id,,,v])=>[id,v]))});
  const add=(u:number,key:string,title:string,intro:string,detail:string,answer:Line[]|ReturnType<typeof fields>,flow='none',table?:ActivityData['table'])=>{
@@ -21,14 +22,14 @@ export function compileCourse(input:any){
   const activity:ActivityData={kind,intro,fields:journal?[]:answer.fields,table,lesson:{title:guide.title,intro:`${s('manager')} is growing ${s('company')}, a coastal shop in Wilmington. ${guide.builds}`,concepts:[guide.focus,guide.limits],example:examples[u-1]}};
   const lines=journal?answer:[],total=journal?lines.reduce((v,l)=>v+l.debit,0):0;
   activities.push({key,unit:u,title,intro,date:date(u,key.endsWith('b')?25:15),reference:`CFO-U${String(u).padStart(2,'0')}-${key.endsWith('b')?'B':'A'}`,detail,activity,accepted:journal?[lines.filter(l=>l.debit||l.credit)]:{fields:answer.expected},flow:journal&&lines.filter(l=>l.account==='1010').reduce((v,l)=>v+l.debit-l.credit,0)===0?'none':flow,total:key==='u4b'?n('soldQty')*n('boardPrice'):key==='u9b'?n('grossPay'):total});
-  if(journal)addRecord(u,title,lines,flow,key.endsWith('b')?25:15);
+  if(journal)addRecord(u,title,lines,flow,key.endsWith('b')?25:15,key);
  };
  const snapshot=(u:number)=>snapshots.push({unit:u,records:structuredClone(records)});
  snapshot(1);
  add(1,'u1a','Opening the doors',`${s('manager')} opens ${s('company')}. The founder deposits ${money(n('capital'))} in exchange for common stock. What changes?`,'Analyze increases; enter zero for accounts that do not change.',fields([['assets','Increase in assets ($)','money',n('capital')],['liabilities','Increase in liabilities ($)','money',0],['equity','Increase in equity ($)','money',n('capital')]]));
- addRecord(1,'Founding common stock',[d('1010',n('capital')),c('3010',n('capital'))],'financing');
+ addRecord(1,'Founding common stock',[d('1010',n('capital')),c('3010',n('capital'))],'financing',15,'u1a');
  add(1,'u1b','The first weekend',`${s('manager')} earns ${money(n('openingService'))} from cash tours and pays ${money(n('openingRent'))} shop rent. There are no other first-week transactions.`,'Include the founding contribution from Activity A. No dividends or opening retained earnings.',fields([['income','Net income ($)','money',n('openingService')-n('openingRent')],['retained','Ending retained earnings ($)','money',n('openingService')-n('openingRent')],['assets','Ending assets ($)','money',n('capital')+n('openingService')-n('openingRent')]]));
- addRecord(1,'Opening tours',[d('1010',n('openingService')),c('4100',n('openingService'))],'operating');addRecord(1,'Shop rent',[d('5100',n('openingRent')),c('1010',n('openingRent'))],'operating');
+ addRecord(1,'Opening tours',[d('1010',n('openingService')),c('4100',n('openingService'))],'operating',15,'u1b');addRecord(1,'Shop rent',[d('5100',n('openingRent')),c('1010',n('openingRent'))],'operating',15,'u1b');
  snapshot(2);
  add(2,'u2a','Outfitting the shop',`${s('manager')} purchases rental equipment for ${money(n('equipment'))}, paying cash to ${s('vendor')}.`,'Record the equipment acquisition; it will be used over six years with no residual value.',[d('1500',n('equipment')),c('1010',n('equipment'))],'investing');
  add(2,'u2b','Protecting the business',`${s('manager')} pays ${money(n('insurance'))} cash for a twelve-month insurance policy. Coverage starts next month.`,'Record the initial payment as an asset, not an immediate expense.',[d('1300',n('insurance')),c('1010',n('insurance'))],'operating');

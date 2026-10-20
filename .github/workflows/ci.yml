@@ -19,7 +19,7 @@ jobs:
       - run: npm run db:local
       - name: Verify database and API
         run: |
-          npm run worker > /tmp/cape-fear-worker.log 2>&1 &
+          npm run worker -- --test-scheduled > /tmp/cape-fear-worker.log 2>&1 &
           for i in $(seq 1 30); do
             if curl -fsS http://127.0.0.1:8787/api/config; then break; fi
             sleep 1
@@ -27,3 +27,4 @@ jobs:
           npm run test:integration
           npm run test:classroom
           node scripts/course-integration.mjs
+          node scripts/correction-integration.mjs

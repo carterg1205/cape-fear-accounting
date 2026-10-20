@@ -130,6 +130,15 @@ This application is a tested local beta, not university-approved or certified FE
 
 Open **Course Builder → Use prepared course** to install all 13 units and 26 activities for a section. Installation selects the new edition and leaves every activity locked. Preview the stories and examples, customize the listed names/numbers, then release activities from **Assignments**. Saving regenerates the complete course's documents, keys and starting checkpoints. After student work begins, use **Create new edition**; old work is preserved in course history.
 
-The course edition and ledger checkpoint controls show earlier exercise sets and selected-unit records. Financial statements combine approved prior-unit starting records and current-unit student journal entries. Worksheet activities earn completion credit without adding journal entries. See `VALIDATION.md` for the simulation and versioning model.
+Instructor course-edition and ledger controls show earlier exercise sets and selected-unit records. Students see the accounting workspace without edition controls. Financial statements combine actual student entries, supplied business transactions and deadline-triggered book corrections. Worksheet activities earn completion credit without adding journal entries. See `VALIDATION.md` for the simulation and versioning model.
 
 Run `node scripts/course-integration.mjs` after the original integration and classroom suites against the same disposable local worker/database.
+
+
+### Deadline corrections and workspace updates
+
+**Settings → Automatic book corrections** controls whether missing transactions are filled automatically and how long to wait after each effective due date (0–168 whole hours; default 24). Individual extensions delay pending corrections. Assignments without deadlines, hidden drafts and locked assignments are not corrected. A Cloudflare scheduled handler runs every 15 minutes; state and financial report reads also catch up due corrections. The scheduled handler is covered by the local API suite using `--test-scheduled`.
+
+Correction records are immutable and separate from student submissions: they do not earn points or alter grades/attempts. Previously posted correct entries remain unchanged. If a later extension permits a student to post an already corrected transaction, the original correction remains in history while its financial effect is replaced by the student's matching entry, preventing duplication. Applied corrections also freeze the related answer keys/course configuration.
+
+The app checks the session behind a loading screen and preserves the selected page, section and journal on refresh through the URL. Unsaved manual journal fields are restored from tab-local, user-scoped session storage. Debit/credit transactions remain manual, with blank account selectors and amount fields; working papers are reserved for analysis/calculation topics. The desktop workspace places supporting documents or transaction details on the left and entry fields on the right.

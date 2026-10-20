@@ -1,3 +1,4 @@
+import {reconcileBooks,correctionLedger} from './book-corrections';
 import type {Context} from './classroom';
 import {compileCourse} from './course-engine';
 import {referenceFeedback} from './accounting';
@@ -7,7 +8,7 @@ export async function preparedCourse(c:Context):Promise<Response|null>{
  if(path==='/api/course'&&req.method==='GET'){
   staff();const versions=(await sql('SELECT * FROM course_versions WHERE section_id=? ORDER BY created_at DESC,id',sectionId).all()).results;
   const selected=versions.find(v=>v.id===url.searchParams.get('version'))||versions.find(v=>v.id===c.section.course_version)||versions[0];
-  const frozen=selected?!!await sql('SELECT t.id FROM attempts t JOIN assignments a ON a.id=t.assignment_id WHERE a.course_version=? LIMIT 1',selected.id).first():false;
+  const frozen=selected?!!await sql('SELECT a.id FROM assignments a WHERE a.course_version=? AND (EXISTS(SELECT 1 FROM attempts t WHERE t.assignment_id=a.id) OR EXISTS(SELECT 1 FROM book_corrections b WHERE b.assignment_id=a.id)) LIMIT 1',selected.id).first():false;
   return json({versions:versions.map(v=>({id:v.id,name:v.name,revision:v.revision,status:v.status})),version:selected||null,frozen,preview:compileCourse(selected?JSON.parse(String(selected.params)):{}).activities.map(a=>({key:a.key,unit:a.unit,title:a.title,activity:a.activity}))});
  }
  if(path==='/api/course/save'&&req.method==='POST'){
@@ -15,7 +16,7 @@ export async function preparedCourse(c:Context):Promise<Response|null>{
   const existing=data.id?await sql('SELECT * FROM course_versions WHERE id=? AND section_id=?',data.id,sectionId).first<any>():null;
   if(data.id&&!existing)fail('Course edition not found.',404);
   if(existing&&data.revision!==existing.revision)fail('The course changed. Refresh before saving.',409);
-  if(existing&&await sql('SELECT t.id FROM attempts t JOIN assignments a ON a.id=t.assignment_id WHERE a.course_version=? LIMIT 1',existing.id).first())fail('Students have started this edition. Create a new edition to preserve their work.',409);
+  if(existing&&await sql('SELECT a.id FROM assignments a WHERE a.course_version=? AND (EXISTS(SELECT 1 FROM attempts t WHERE t.assignment_id=a.id) OR EXISTS(SELECT 1 FROM book_corrections b WHERE b.assignment_id=a.id)) LIMIT 1',existing.id).first())fail('Students have started this edition or book corrections have been applied. Create a new edition to preserve their work.',409);
   const id=existing?.id||crypto.randomUUID(),revision=(existing?.revision||0)+1,name=typeof data.name==='string'?data.name.trim().slice(0,80):'Prepared accounting course';if(!name)fail('Give the course edition a name.');
   const statements:D1PreparedStatement[]=[];
   if(existing)statements.push(sql('INSERT INTO course_edit_guards VALUES(?,?)',id,existing.revision),sql('UPDATE course_versions SET params=?,revision=?,name=? WHERE id=?',JSON.stringify(compiled!.params),revision,name,id));
@@ -59,9 +60,16 @@ export async function courseLedger(c:Context,studentId:string){
  const released=(await c.sql("SELECT unit FROM assignments WHERE course_version=? AND published=1 AND (release_mode='open' OR (release_mode='scheduled' AND opens_at<=?)) ORDER BY unit DESC LIMIT 1",version,new Date().toISOString()).first<any>())?.unit||1;
  const unit=Number(c.url.searchParams.get('unit')||released);if(!Number.isInteger(unit)||unit<1||unit>13)c.fail('Invalid unit.');
  if(!c.instructor&&unit>released)c.fail('This unit has not been released.',403);
- const snapshot=await c.sql('SELECT records FROM course_snapshots WHERE version_id=? AND unit=?',version,unit).first<any>();
- const records=JSON.parse(snapshot?.records||'[]');const provided=records.flatMap((r:any)=>r.lines.map((l:any)=>({...l,date:r.date,memo:'Provided starting record · '+r.memo,reference:r.reference,cash_flow:r.cash_flow,provided:true})));
- const entries=(await c.sql('SELECT e.* FROM entries e JOIN assignments a ON a.id=e.assignment_id WHERE e.user_id=? AND a.course_version=? AND a.unit=? ORDER BY e.date,e.created_at',studentId,version,unit).all()).results;
- const lines=(await c.sql('SELECT l.*,e.date,e.memo,e.reference,a.cash_flow FROM lines l JOIN entries e ON e.id=l.entry_id JOIN assignments a ON a.id=e.assignment_id WHERE e.user_id=? AND a.course_version=? AND a.unit=? ORDER BY e.date,e.created_at,l.id',studentId,version,unit).all()).results;
- return {version,unit,entries,lines:[...provided,...lines],providedCount:records.length};
+ const assignments=(await c.sql("SELECT unit,published,release_mode,opens_at FROM assignments WHERE course_version=?",version).all<any>()).results;
+ const visibleUnits=new Set(assignments.filter(a=>a.published===1&&(a.release_mode==='open'||a.release_mode==='scheduled'&&Date.parse(a.opens_at)<=Date.now())).map(a=>a.unit));
+ // Opening records (deposits, patent and dividend payment) are supplied business transactions,
+ // not replacements for students' earlier assignments. Prior-unit answers wait for correction time.
+ const course=compileCourse(JSON.parse(v.params));
+ const records=course.records.filter(r=>!r.activityKey&&r.unit<=unit&&visibleUnits.has(r.unit));
+ const provided=records.flatMap(r=>r.lines.map(l=>({...l,date:r.date,memo:'Provided business record · '+r.memo,reference:r.reference,cash_flow:r.cash_flow,provided:true})));
+ await reconcileBooks(c.env.DB,{sectionId:c.sectionId,studentId});
+ const corrections=await correctionLedger(c.env.DB,studentId,c.sectionId,String(version),unit);
+ const entries=(await c.sql('SELECT e.* FROM entries e JOIN assignments a ON a.id=e.assignment_id WHERE e.user_id=? AND a.course_version=? AND a.unit<=? ORDER BY e.date,e.created_at',studentId,version,unit).all()).results;
+ const lines=(await c.sql('SELECT l.*,e.date,e.memo,e.reference,a.cash_flow FROM lines l JOIN entries e ON e.id=l.entry_id JOIN assignments a ON a.id=e.assignment_id WHERE e.user_id=? AND a.course_version=? AND a.unit<=? ORDER BY e.date,e.created_at,l.id',studentId,version,unit).all()).results;
+ return {version,unit,entries,lines:[...provided,...corrections.lines,...lines].sort((a,b)=>String(a.date).localeCompare(String(b.date))),providedCount:records.length,correctionCount:corrections.count,corrections:corrections.entries};
 }

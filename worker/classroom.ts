@@ -1,3 +1,4 @@
+import {reconcileBooks,correctionLedger} from './book-corrections';
 import {courseLedger} from './prepared-course';
 import {validate,financialStatements,type Account,type Line} from './accounting';
 export type Context={req:Request;url:URL;env:{DB:D1Database;DOCUMENTS:R2Bucket};user:{id:string;role:string};sectionId:string;section:any;sections:any[];instructor:boolean;accounts:Account[];sql:(s:string,...args:any[])=>D1PreparedStatement;body:(r:Request)=>Promise<any>;fail:(m:string,s?:number)=>never;json:(d:unknown,s?:number)=>Response};
@@ -7,12 +8,14 @@ export async function classroom(c:Context):Promise<Response|null>{
  const staff=()=>{if(!instructor)fail('Instructor access required.',403);};
  const audit=(action:string,target:string,data:unknown)=>sql('INSERT INTO audit(id,actor,action,target,details) VALUES(?,?,?,?,?)',crypto.randomUUID(),user.id,action,target,JSON.stringify(data));
  const assignment=async(id:string)=>{const a=await sql('SELECT * FROM assignments WHERE id=? AND section_id=?',id,sectionId).first<any>();if(!a)fail('Assignment not found.',404);return a;};
- const editable=async(id:string)=>{if(await sql('SELECT id FROM attempts WHERE assignment_id=? LIMIT 1',id).first())fail('Student work has started. Copy this assignment to change its source document or answer key.',409);};
+ const editable=async(id:string)=>{if(await sql('SELECT a.id FROM assignments a WHERE a.id=? AND (EXISTS(SELECT 1 FROM attempts t WHERE t.assignment_id=a.id) OR EXISTS(SELECT 1 FROM book_corrections b WHERE b.assignment_id=a.id)) LIMIT 1',id).first())fail('Student work has started. Copy this assignment to change its source document or answer key.',409);};
  const iso=(value:any,label:string)=>{if(value===null||value==='')return null;if(typeof value!=='string'||!Number.isFinite(Date.parse(value)))fail('Choose a valid '+label+'.');return new Date(value).toISOString();};
  const date=(s:any)=>typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&Number.isFinite(Date.parse(s))&&new Date(s).toISOString().slice(0,10)===s;
  if(path==='/api/section/settings'&&req.method==='POST'){
   staff();const d=await body(req);if(typeof d.reportsUnlocked!=='boolean'||!Number.isInteger(d.weight)||d.weight<0||d.weight>100)fail('Choose report access and a course weight from 0 to 100.');
-  await env.DB.batch([sql('UPDATE sections SET reports_unlocked=?,weight=? WHERE id=?',d.reportsUnlocked?1:0,d.weight,sectionId),audit('section.settings',sectionId,d)]);return json({ok:true});
+  const enabled=d.correctionEnabled===undefined?section.book_correction_enabled:d.correctionEnabled?1:0,delay=d.correctionDelayHours===undefined?section.book_correction_delay_hours:d.correctionDelayHours;
+  if(d.correctionEnabled!==undefined&&typeof d.correctionEnabled!=='boolean'||!Number.isInteger(delay)||delay<0||delay>168)fail('Choose a correction delay from 0 to 168 whole hours.');
+  await env.DB.batch([sql('UPDATE sections SET reports_unlocked=?,weight=?,book_correction_enabled=?,book_correction_delay_hours=? WHERE id=?',d.reportsUnlocked?1:0,d.weight,enabled,delay,sectionId),audit('section.settings',sectionId,d)]);return json({ok:true});
  }
  if(path==='/api/assignments/save'&&req.method==='POST'){
   staff();const d=await body(req),id=d.id||crypto.randomUUID();
@@ -40,7 +43,7 @@ export async function classroom(c:Context):Promise<Response|null>{
   staff();const [,id,action]=edit,a=await assignment(id);if(a.course_version&&action!=='extension')fail('Use the prepared course settings for this activity.',409);
   if(action==='edit'&&req.method==='GET'){
    const key=await sql('SELECT accepted FROM answer_keys WHERE assignment_id=?',id).first<any>();const documents=(await sql('SELECT id,filename,content_type,size FROM documents WHERE assignment_id=?',id).all()).results;
-   const frozen=!!await sql('SELECT id FROM attempts WHERE assignment_id=? LIMIT 1',id).first();return json({assignment:a,accepted:JSON.parse(key?.accepted||'[[]]'),documents,frozen});
+   const frozen=!!await sql('SELECT a.id FROM assignments a WHERE a.id=? AND (EXISTS(SELECT 1 FROM attempts t WHERE t.assignment_id=a.id) OR EXISTS(SELECT 1 FROM book_corrections b WHERE b.assignment_id=a.id)) LIMIT 1',id).first();return json({assignment:a,accepted:JSON.parse(key?.accepted||'[[]]'),documents,frozen});
   }
   if(action==='copy'&&req.method==='POST'){
    const d=await body(req),target=sections.find(s=>s.id===d.sectionId);if(!target||(user.role!=='owner'&&target.instructor_id!==user.id))fail('No instructor access to the target section.',403);
@@ -81,8 +84,8 @@ export async function classroom(c:Context):Promise<Response|null>{
  if(path==='/api/reports'&&req.method==='GET'){
   if(!instructor&&!section.reports_unlocked)fail('Your instructor has not unlocked financial statements.',403);
   const studentId=url.searchParams.get('student')||user.id;if(studentId!==user.id&&(!instructor||!await sql("SELECT e.user_id FROM enrollments e JOIN users u ON u.id=e.user_id WHERE e.user_id=? AND e.section_id=? AND u.role='student'",studentId,sectionId).first()))fail('No access to this student record.',403);
-  const lines=(await sql('SELECT l.*,e.date,a.cash_flow FROM lines l JOIN entries e ON e.id=l.entry_id JOIN assignments a ON a.id=e.assignment_id WHERE e.user_id=? AND a.section_id=?',studentId,sectionId).all<Line&{date:string;cash_flow:string}>()).results;
-  const ledger=await courseLedger(c,studentId);return json(financialStatements(accounts,(ledger?.lines||lines) as any));
+  const lines=(await sql('SELECT l.*,e.date,a.cash_flow FROM lines l JOIN entries e ON e.id=l.entry_id JOIN assignments a ON a.id=e.assignment_id WHERE e.user_id=? AND a.section_id=? AND a.course_version IS NULL',studentId,sectionId).all<Line&{date:string;cash_flow:string}>()).results;
+  const ledger=await courseLedger(c,studentId);if(ledger)return json(financialStatements(accounts,ledger.lines as any));await reconcileBooks(env.DB,{sectionId,studentId});const corrected=await correctionLedger(env.DB,studentId,sectionId,null);return json(financialStatements(accounts,[...lines,...corrected.lines] as any));
  }
  if(path==='/api/grades.csv'&&req.method==='GET'){
   staff();const student=url.searchParams.get('student')||'',activity=url.searchParams.get('assignment')||'';
