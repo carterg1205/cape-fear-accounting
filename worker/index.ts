@@ -1,3 +1,4 @@
+import {transactionPresentation,limitedAccounts} from './transaction-presentation';
 import {reconcileBooks,correctionLedger,correctionTime} from './book-corrections';
 import {preparedCourse,courseLedger} from './prepared-course';
 import { validate, trialBalance, referenceFeedback, type Account, type Line } from './accounting';
@@ -74,8 +75,9 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
   }
   if(path==='/api/state'&&req.method==='GET'){
    const chosenVersion=url.searchParams.get('version')||section?.course_version||'legacy';
-   const assignments=(await sql('SELECT a.*,COALESCE(x.due_at,a.due_at) AS effective_due_at,e.id AS entry_id,e.created_at AS submitted_at,(SELECT COUNT(*) FROM attempts t WHERE t.user_id=? AND t.assignment_id=a.id) AS attempts FROM assignments a LEFT JOIN student_submissions e ON e.assignment_id=a.id AND e.user_id=? LEFT JOIN extensions x ON x.assignment_id=a.id AND x.user_id=? WHERE a.section_id=? AND (a.published=1 OR ?=1) AND ((?=\'legacy\' AND a.course_version IS NULL) OR a.course_version=?) ORDER BY a.unit,a.sort_order,a.transaction_date',user.id,user.id,user.id,sectionId,instructor?1:0,chosenVersion,chosenVersion).all()).results.map((a:any)=>{
-    const unlocked=open(a);const safe={...a,unlocked,correction_at:section?.book_correction_enabled?correctionTime(a.effective_due_at,Number(section.book_correction_delay_hours)):null};delete safe.explanation;delete safe.expected_reference;delete safe.cash_flow;
+   const presentationVersion=chosenVersion==='legacy'?null:await sql('SELECT params FROM course_versions WHERE id=? AND section_id=?',chosenVersion,sectionId).first<any>();const presentationParams=presentationVersion?JSON.parse(presentationVersion.params):undefined;
+   const assignments=(await sql('SELECT k.accepted AS private_key,a.*,COALESCE(x.due_at,a.due_at) AS effective_due_at,e.id AS entry_id,e.created_at AS submitted_at,(SELECT COUNT(*) FROM attempts t WHERE t.user_id=? AND t.assignment_id=a.id) AS attempts FROM assignments a LEFT JOIN answer_keys k ON k.assignment_id=a.id LEFT JOIN student_submissions e ON e.assignment_id=a.id AND e.user_id=? LEFT JOIN extensions x ON x.assignment_id=a.id AND x.user_id=? WHERE a.section_id=? AND (a.published=1 OR ?=1) AND ((?=\'legacy\' AND a.course_version IS NULL) OR a.course_version=?) ORDER BY a.unit,a.sort_order,a.transaction_date',user.id,user.id,user.id,sectionId,instructor?1:0,chosenVersion,chosenVersion).all()).results.map((a:any)=>{
+    const unlocked=open(a);const safe={...a,unlocked,correction_at:section?.book_correction_enabled?correctionTime(a.effective_due_at,Number(section.book_correction_delay_hours)):null};delete safe.explanation;delete safe.expected_reference;delete safe.cash_flow;delete safe.private_key;if(instructor||unlocked){Object.assign(safe,transactionPresentation(a,presentationParams));safe.account_choices=limitedAccounts(a.unit,accounts,JSON.parse(a.private_key||'[]'));}
     if(!instructor&&!unlocked){delete safe.document;delete safe.instructions;delete safe.activity_data;}if(a.entry_id)safe.explanation=a.explanation;return safe;
    });
    const attached=(await sql('SELECT d.id,d.assignment_id,d.filename,d.content_type,d.size FROM documents d JOIN assignments a ON a.id=d.assignment_id WHERE a.section_id=?',sectionId).all()).results;
@@ -124,10 +126,11 @@ export default {async fetch(req:Request,env:Env):Promise<Response>{
    if(action==='draft'){await sql('INSERT INTO drafts VALUES(?,?,?) ON CONFLICT(user_id,assignment_id) DO UPDATE SET body=excluded.body',user.id,id,JSON.stringify(data)).run();return json({ok:true});}
    const key=await sql('SELECT accepted FROM answer_keys WHERE assignment_id=?',id).first<{accepted:string}>();
    if(!key)fail('Assignment answer key is unavailable.',503);
-   let feedback=validate(data.lines,accounts,JSON.parse(key.accepted));
-   if(!feedback)feedback=referenceFeedback(data.reference,a.expected_reference);
-   if(!feedback&&(typeof data.date!=='string'||data.date!==a.transaction_date||data.date<a.period_start||data.date>a.period_end))feedback='Review the transaction date and the open accounting period.';
-   if(!feedback&&(typeof data.memo!=='string'||!data.memo.trim()||data.memo.length>500||typeof data.reference!=='string'||data.reference.length>80))feedback='Add a memo and use a reference of at most 80 characters.';
+   const feedbackParts=[validate(data.lines,accounts,JSON.parse(key.accepted)),referenceFeedback(data.reference,a.expected_reference)];
+   if(typeof data.date!=='string'||data.date!==a.transaction_date||data.date<a.period_start||data.date>a.period_end)feedbackParts.push('Transaction date: use '+a.transaction_date+', the date specified in the question.');
+   if(typeof data.memo!=='string'||!data.memo.trim()||data.memo.length>500)feedbackParts.push('Memo: enter a short transaction description, up to 500 characters.');
+   if(typeof data.reference!=='string'||data.reference.length>80)feedbackParts.push('Reference: use at most 80 characters.');
+   const feedback=feedbackParts.filter(Boolean).join('\n')||null;
    if(preview)return json({correct:!feedback,feedback:feedback||'Your preview entry is correct. No student records were changed.'});
    const attempt=sql('INSERT INTO attempts(id,user_id,assignment_id,body,feedback,correct,course_revision) VALUES(?,?,?,?,?,?,?)',crypto.randomUUID(),user.id,id,JSON.stringify(data),feedback||'Entry is correct.',feedback?0:1,a.course_revision);
    if(feedback||action==='check'){await attempt.run();return json({correct:!feedback,feedback:feedback||'Your entry is correct and ready to post.'});}

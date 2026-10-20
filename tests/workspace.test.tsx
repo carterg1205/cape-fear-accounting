@@ -15,9 +15,9 @@ describe('student manual workspace',()=>{
   expect((screen.getByLabelText('Account line 1') as unknown as HTMLSelectElement).value).toBe('');
   fireEvent.change(screen.getByLabelText('Transaction date'),{target:{value:'2027-01-11'}});
   fireEvent.change(screen.getByLabelText('Memo'),{target:{value:'Issued stock'}});
-  fireEvent.change(screen.getByLabelText('Account line 1'),{target:{value:'1010'}});
+  fireEvent.change(screen.getByLabelText('Account line 1'),{target:{value:'1010'}});fireEvent.keyDown(screen.getByLabelText('Account line 1'),{key:'Enter'});
   fireEvent.change(screen.getByLabelText('debit line 1'),{target:{value:'0.29'}});
-  fireEvent.change(screen.getByLabelText('Account line 2'),{target:{value:'3010'}});
+  fireEvent.change(screen.getByLabelText('Account line 2'),{target:{value:'3010'}});fireEvent.keyDown(screen.getByLabelText('Account line 2'),{key:'Enter'});
   fireEvent.change(screen.getByLabelText('credit line 2'),{target:{value:'0.29'}});
   fireEvent.click(screen.getByRole('button',{name:'Check entry'}));
   await screen.findByText('Ready to post.');
@@ -107,7 +107,7 @@ describe('refresh and accounting workspace',()=>{
   expect(screen.queryByLabelText('Course edition')).toBeNull();expect(screen.queryByText('Learn by doing.')).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Open workspace'}));
   expect(screen.queryByText('Review the concepts and worked example')).toBeNull();
-  expect(screen.getByLabelText('Account line 1').tagName).toBe('SELECT');
+  expect(screen.getByLabelText('Account line 1').getAttribute('role')).toBe('combobox');
   expect((screen.getByLabelText('debit line 1') as HTMLInputElement).value).toBe('');
  });
  it('shows a recoverable load error instead of a login form on network failure',async()=>{

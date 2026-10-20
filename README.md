@@ -144,3 +144,13 @@ Correction records are immutable and separate from student submissions: they do 
 The app checks the session behind a loading screen and preserves the selected page, section and journal on refresh through the URL. Unsaved manual journal fields are restored from tab-local, user-scoped session storage. Debit/credit transactions remain manual, with blank account selectors and amount fields; working papers are reserved for analysis/calculation topics. The desktop workspace places supporting documents or transaction details on the left and entry fields on the right.
 
 Closing a previously released assignment keeps its accounting history and does not cancel an eligible deadline correction. Unreleased locks still hide future transactions. Released/closed assignments remain part of the student's grade denominator.
+
+### Transaction questions, supporting records and account search
+
+Every released journal transaction now supplies a complete question with the business facts, accounting assumptions, explicit recording task, date and reference. Supporting documents are supplementary. Prepared transactions use appropriate invoices, paid receipts, policy schedules, bank advice, payroll registers and financing records with counterparties, terms, line items and totals. The presentation is generated read-only from the edition's existing parameters; it does not change frozen answer keys or student submissions.
+
+Journal accounts use a searchable combobox with name/code search, keyboard navigation and pointer selection. The per-transaction list generally contains 8–12 accounts, including plausible alternatives; every accepted account is retained for custom instructor-authored keys. The chart of accounts remains available separately. No account is selected automatically by a search.
+
+Checks identify incorrect line/account selections, wrong debit/credit direction, amount errors and missing accounts. Imbalances show the actual debit/credit totals and difference. Date, reference and memo problems are reported alongside accounting errors, using the existing yellow review feedback. Exact cents, split/compound-line equivalence and multiple accepted configurations remain supported.
+
+CI also runs `node scripts/transaction-integration.mjs` after the preceding local API suites.

@@ -72,3 +72,10 @@ Before student attempts, saves regenerate the complete edition atomically with a
 - Migration 0006 preserves release history so closing a previously released week does not remove supplied records, roll back the ledger period, cancel eligible corrections or exclude missed work from the dashboard grade. Previously unreleased locks and future schedules remain protected. Four additional HTTP checks cover closed-week correction eligibility and retained supplied transactions.
 
 - Responsive follow-up verified 390, 768, 1024, 1100 and 1440-pixel widths. Smaller laptop windows stack the panels before their minimum column widths would overflow.
+
+## Realistic records, complete questions and searchable accounts
+
+- All 32 unit/DOM tests pass. New cases cover account-name/code search, keyboard/pointer choice, unmatched searches and Escape, complete questions independent of the invoice, generated invoice quantities/prices/totals, inclusion of custom required accounts, and line-specific account/direction/amount diagnostics with split-line aggregation.
+- All 213 HTTP checks pass: the prior 196 checks plus 17 transaction/presentation checks. New checks verify locked questions/documents remain hidden, private answer-key fields are never serialized, shortened account lists include required accounts and alternatives, purchase/sales invoice counterparties and totals are correct, documentless adjustments contain all facts, preview does not freeze work, date/reference/memo errors are combined, incorrect checks do not post, and correct work still posts manually.
+- Chromium verified an eight-account example, typed name/code search, pointer and Enter selection, specific yellow feedback, supplemental line-item invoice, manual data entry, restoration after refresh, and no page overflow at 390, 768, 1024, 1100 and 1440 pixels. No runtime errors were observed.
+- Supporting records are generated from existing course values at read time. Existing started course editions retain their keys, grades and accounting records. Questions include the facts and instructions; the record itself contains business information rather than accounting-answer instructions.
